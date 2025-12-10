@@ -1,383 +1,385 @@
 #!/usr/bin/env python3
 """
-Import Grainger product data from pipe-delimited files into SQLite database.
-Handles large files efficiently using chunked processing.
-Special handling for malformed files.
+Import Grainger product data - Special parser for malformed files.
+Handles mixed delimiters (pipe + tab + quotes).
 """
 
 import os
 import sys
-import csv
+import re
 import pandas as pd
 from sqlalchemy.orm import Session
 from database import engine, Base, Product, SourceFile, init_db
 from datetime import datetime
 
-# Configuration
-CHUNK_SIZE = 10000
 DATA_DIR = "../data"
+BATCH_SIZE = 5000
 
-# Increase CSV field size limit for large fields
-csv.field_size_limit(sys.maxsize)
+
+def clean_value(value):
+    """Clean a value - remove tabs, extra spaces, quotes."""
+    if value is None:
+        return ''
+    s = str(value)
+    # Remove tabs and replace with space
+    s = s.replace('\t', ' ')
+    # Remove multiple spaces
+    s = re.sub(r'\s+', ' ', s)
+    # Remove leading/trailing quotes and spaces
+    s = s.strip().strip('"').strip()
+    if s.lower() == 'nan':
+        return ''
+    return s
 
 
 def clean_price(value):
-    """Convert price string to float."""
-    if pd.isna(value) or value is None:
+    """Convert to float."""
+    v = clean_value(value)
+    if not v:
         return 0.0
     try:
-        return float(str(value).replace(',', '').replace('$', '').strip())
+        return float(v.replace(',', '').replace('$', ''))
     except:
         return 0.0
 
 
 def clean_int(value):
-    """Convert to integer safely."""
-    if pd.isna(value) or value is None:
+    """Convert to int."""
+    v = clean_value(value)
+    if not v:
         return 0
     try:
-        return int(float(value))
+        return int(float(v))
     except:
         return 0
 
 
-def clean_string(value, max_len=None):
-    """Clean string value."""
-    if pd.isna(value) or value is None:
-        return ''
-    s = str(value).strip()
-    if s.lower() == 'nan':
-        return ''
-    if max_len:
-        s = s[:max_len]
-    return s
+def parse_file1_line(line, header_map):
+    """Parse a line from file1 (the problematic format)."""
+    # File1 format: values separated by | but some values contain tabs
+    # First, split by |
+    parts = line.split('|')
+
+    if len(parts) < 10:
+        return None
+
+    # Clean all parts
+    parts = [clean_value(p) for p in parts]
+
+    # Map to dict based on header positions
+    data = {}
+    for col_name, idx in header_map.items():
+        if idx < len(parts):
+            data[col_name] = parts[idx]
+        else:
+            data[col_name] = ''
+
+    return data
 
 
-def detect_delimiter(filepath):
-    """Detect the delimiter used in the file."""
-    with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
-        first_lines = [f.readline() for _ in range(5)]
+def import_file1(filepath, source_name):
+    """Import file1 with special parsing."""
+    print(f"\n{'='*60}")
+    print(f"📦 Importing: {os.path.basename(filepath)}")
+    print(f"   Source: {source_name}")
+    print(f"   Method: Custom parser for mixed delimiters")
+    print(f"{'='*60}")
 
-    # Count delimiters
-    pipe_count = sum(line.count('|') for line in first_lines)
-    tab_count = sum(line.count('\t') for line in first_lines)
-
-    if pipe_count > tab_count:
-        return '|'
-    elif tab_count > pipe_count:
-        return '\t'
-    else:
-        return '|'  # default
-
-
-def import_with_csv_reader(filepath: str, source_name: str, delimiter: str):
-    """Import using Python's csv module for problematic files."""
-    print(f"  Using CSV reader with delimiter: {repr(delimiter)}")
+    # Define expected columns for file1
+    # Based on: Grainger Sku|Short Description|Long Description|Price|Catalog Price|...
+    header_map = {
+        'sku': 0,
+        'short_desc': 1,
+        'long_desc': 2,
+        'price': 3,
+        'catalog_price': 4,
+        'unit': 5,
+        'items_per_uoi': 6,
+        'min_order': 7,
+        'mfg_name': 8,
+        'mfg_number': 9,
+        'mfg_number2': 10,
+        'lead_time': 11,
+        'image_ref': 12,
+        'url': 13,
+        'ship_weight': 14,
+        'msds_ind': 15,
+        'msds_url': 16,
+        'hazmat': 17,
+        'catalog_page': 18,
+        'harmonization': 19,
+        'primary_image': 20,
+        'country_code': 21,
+        'country_name': 22,
+        'jwod': 23,
+        'green_flag': 24,
+        'upc': 25,
+        'category': 26,
+        'family': 27,
+        'segment': 28,
+        'unspsc4': 29,
+        'unspsc_class_id': 30,
+        'unspsc_class_name': 31,
+        'unspsc_commodity_id': 32,
+        'unspsc_commodity_name': 33,
+        'unspsc_family_id': 34,
+        'unspsc_family_name': 35,
+        'unspsc_segment_id': 36,
+        'unspsc_segment_name': 37,
+        'not4sale_states': 38,
+        'taa_compliant': 39,
+        'prop65_org': 40,
+        'prop65_wht': 41,
+        'prop65_cancer': 42,
+        'prop65_repro': 43,
+        'prop65_warn': 44,
+    }
 
     total_imported = 0
     total_skipped = 0
     batch = []
-    batch_size = 5000
+    line_num = 0
 
     with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
-        # Read header
-        header_line = f.readline()
-        # Clean header - remove any embedded tabs/special chars
-        header = [h.strip().replace('\t', ' ').strip() for h in header_line.split(delimiter)]
+        # Skip header
+        header = f.readline()
+        print(f"  Header: {header[:80]}...")
 
-        print(f"  Header columns: {header[:5]}...")
-
-        # Create column mapping
-        col_map = {}
-        for i, h in enumerate(header):
-            h_lower = h.lower().replace(' ', '_')
-            col_map[h_lower] = i
-            col_map[h] = i
-
-        # Find key columns
-        sku_col = None
-        for name in ['material_no', 'grainger_sku', 'grainger sku', 'sku', 'material no']:
-            if name in col_map:
-                sku_col = col_map[name]
-                break
-
-        if sku_col is None:
-            print(f"  ❌ Could not find SKU column!")
-            return 0
-
-        # Process rows
-        reader = csv.reader(f, delimiter=delimiter, quotechar='"')
-        row_count = 0
-
-        for row in reader:
-            row_count += 1
+        for line in f:
+            line_num += 1
+            line = line.strip()
+            if not line:
+                continue
 
             try:
-                if len(row) < 5:
+                data = parse_file1_line(line, header_map)
+                if not data:
                     total_skipped += 1
                     continue
 
-                material_no = clean_string(row[sku_col] if sku_col < len(row) else '')
-                if not material_no:
+                sku = clean_value(data.get('sku', ''))
+                if not sku:
                     total_skipped += 1
                     continue
 
-                def get_val(names, default=''):
-                    for name in names:
-                        if name in col_map and col_map[name] < len(row):
-                            return row[col_map[name]]
-                    return default
-
-                # Get image URL
-                image_ref = clean_string(get_val(['image_ref', 'primary_image', 'image ref']))
+                # Build image URL
+                image_ref = clean_value(data.get('image_ref', '') or data.get('primary_image', ''))
                 if image_ref and not image_ref.startswith('http'):
                     image_url = f"https://static.grainger.com/rp/s/is/image/Grainger/{image_ref}?$s7product$"
                 else:
                     image_url = image_ref
 
                 product = {
-                    'material_no': material_no,
-                    'short_description': clean_string(get_val(['short_description', 'short description']), 500),
-                    'long_description': clean_string(get_val(['long_description', 'long description'])),
-                    'price': clean_price(get_val(['price'])),
-                    'catalog_price': clean_price(get_val(['wx_price', 'catalog_price', 'catalog price'])),
-                    'unit_of_issue': clean_string(get_val(['unit_of_issue', 'unit of issue']), 20),
-                    'items_per_uoi': clean_int(get_val(['items_per_uoi', 'items per uoi'])),
-                    'min_order_qty': clean_int(get_val(['min_order_qty', 'min order qty'])),
-                    'mfr_name': clean_string(get_val(['mfr_name', 'mfg_name', 'mfr name', 'mfg name']), 200),
-                    'mfg_number': clean_string(get_val(['condensed_mfg_number', 'non_condensed_mfg_number', 'condensed mfg number']), 100),
-                    'lead_time': clean_int(get_val(['lead_time', 'lead time'])),
-                    'image_url': image_url,
-                    'product_url': clean_string(get_val(['url_link', 'url link']), 500),
-                    'category_name': clean_string(get_val(['gds_categoryname']), 200),
-                    'family_name': clean_string(get_val(['gds_familyname']), 200),
-                    'segment_name': clean_string(get_val(['gds_segmentname']), 200),
-                    'country_of_origin': clean_string(get_val(['country_of_origin_name']), 100),
+                    'material_no': sku,
+                    'short_description': clean_value(data.get('short_desc', ''))[:500],
+                    'long_description': clean_value(data.get('long_desc', '')),
+                    'price': clean_price(data.get('price', 0)),
+                    'catalog_price': clean_price(data.get('catalog_price', 0)),
+                    'unit_of_issue': clean_value(data.get('unit', ''))[:20],
+                    'items_per_uoi': clean_int(data.get('items_per_uoi', 1)),
+                    'min_order_qty': clean_int(data.get('min_order', 1)),
+                    'mfr_name': clean_value(data.get('mfg_name', ''))[:200],
+                    'mfg_number': clean_value(data.get('mfg_number', ''))[:100],
+                    'lead_time': clean_int(data.get('lead_time', 0)),
+                    'image_url': image_url[:500] if image_url else '',
+                    'product_url': clean_value(data.get('url', ''))[:500],
+                    'category_name': clean_value(data.get('category', ''))[:200],
+                    'family_name': clean_value(data.get('family', ''))[:200],
+                    'segment_name': clean_value(data.get('segment', ''))[:200],
+                    'country_of_origin': clean_value(data.get('country_name', ''))[:100],
                     'source_file': source_name,
                     'status': 'pending'
                 }
 
                 batch.append(product)
 
-                if len(batch) >= batch_size:
+                if len(batch) >= BATCH_SIZE:
                     with Session(engine) as session:
                         for prod in batch:
                             session.add(Product(**prod))
                         session.commit()
                     total_imported += len(batch)
-                    print(f"  ✓ Row {row_count:,}: +{len(batch)} products (Total: {total_imported:,})")
+                    print(f"  ✓ Line {line_num:,}: +{len(batch)} (Total: {total_imported:,})")
                     batch = []
 
             except Exception as e:
                 total_skipped += 1
+                if total_skipped < 10:
+                    print(f"  ⚠️ Line {line_num} error: {str(e)[:50]}")
                 continue
 
-        # Insert remaining
-        if batch:
-            with Session(engine) as session:
-                for prod in batch:
-                    session.add(Product(**prod))
-                session.commit()
-            total_imported += len(batch)
+    # Insert remaining
+    if batch:
+        with Session(engine) as session:
+            for prod in batch:
+                session.add(Product(**prod))
+            session.commit()
+        total_imported += len(batch)
+        print(f"  ✓ Final batch: +{len(batch)} (Total: {total_imported:,})")
 
-    return total_imported, total_skipped
+    # Register source
+    if total_imported > 0:
+        with Session(engine) as session:
+            existing = session.query(SourceFile).filter_by(filename=source_name).first()
+            if existing:
+                existing.product_count = total_imported
+            else:
+                session.add(SourceFile(
+                    filename=source_name,
+                    display_name=os.path.basename(filepath).replace('.txt', ''),
+                    product_count=total_imported,
+                    imported_at=datetime.now().isoformat()
+                ))
+            session.commit()
+
+    print(f"\n✅ {source_name}: {total_imported:,} imported, {total_skipped:,} skipped")
+    return total_imported
 
 
-def import_with_pandas(filepath: str, source_name: str, delimiter: str):
-    """Import using pandas for well-formed files."""
-    print(f"  Using Pandas with delimiter: {repr(delimiter)}")
+def import_file2(filepath, source_name):
+    """Import file2 with pandas (clean pipe-delimited)."""
+    print(f"\n{'='*60}")
+    print(f"📦 Importing: {os.path.basename(filepath)}")
+    print(f"   Source: {source_name}")
+    print(f"   Method: Pandas (clean pipe-delimited)")
+    print(f"{'='*60}")
 
     total_imported = 0
     total_skipped = 0
 
-    try:
-        chunks = pd.read_csv(
-            filepath,
-            sep=delimiter,
-            encoding='utf-8',
-            encoding_errors='replace',
-            chunksize=CHUNK_SIZE,
-            low_memory=False,
-            on_bad_lines='skip',
-            quoting=csv.QUOTE_MINIMAL
-        )
-    except Exception as e:
-        print(f"  ❌ Pandas read error: {e}")
-        return None, None
+    chunks = pd.read_csv(
+        filepath,
+        sep='|',
+        encoding='utf-8',
+        encoding_errors='replace',
+        chunksize=10000,
+        low_memory=False,
+        on_bad_lines='skip'
+    )
 
     for chunk_num, df in enumerate(chunks):
-        products_to_insert = []
+        products = []
 
         if chunk_num == 0:
-            print(f"  Columns found: {list(df.columns)[:5]}...")
+            print(f"  Columns: {list(df.columns)[:5]}...")
 
         for _, row in df.iterrows():
             try:
-                material_no = clean_string(
-                    row.get('material_no') or
-                    row.get('Grainger Sku') or
-                    row.get('Material No') or
-                    ''
-                )
-
-                if not material_no:
+                sku = clean_value(row.get('material_no', ''))
+                if not sku:
                     total_skipped += 1
                     continue
 
-                image_ref = clean_string(
-                    row.get('Image Ref') or
-                    row.get('primary_image') or
-                    ''
-                )
-
+                image_ref = clean_value(row.get('Image Ref', '') or row.get('primary_image', ''))
                 if image_ref and not image_ref.startswith('http'):
                     image_url = f"https://static.grainger.com/rp/s/is/image/Grainger/{image_ref}?$s7product$"
                 else:
                     image_url = image_ref
 
                 product = {
-                    'material_no': material_no,
-                    'short_description': clean_string(row.get('Short Description', ''), 500),
-                    'long_description': clean_string(row.get('Long Description', '')),
+                    'material_no': sku,
+                    'short_description': clean_value(row.get('Short Description', ''))[:500],
+                    'long_description': clean_value(row.get('Long Description', '')),
                     'price': clean_price(row.get('Price', 0)),
-                    'catalog_price': clean_price(row.get('wx_price') or row.get('Catalog Price', 0)),
-                    'unit_of_issue': clean_string(row.get('Unit of Issue', ''), 20),
+                    'catalog_price': clean_price(row.get('wx_price', 0)),
+                    'unit_of_issue': clean_value(row.get('Unit of Issue', ''))[:20],
                     'items_per_uoi': clean_int(row.get('Items Per UOI', 1)),
                     'min_order_qty': clean_int(row.get('Min Order Qty', 1)),
-                    'mfr_name': clean_string(row.get('MFR Name') or row.get('Mfg Name', ''), 200),
-                    'mfg_number': clean_string(row.get('Condensed Mfg Number') or row.get('Non Condensed Mfg Number', ''), 100),
+                    'mfr_name': clean_value(row.get('MFR Name', ''))[:200],
+                    'mfg_number': clean_value(row.get('Condensed Mfg Number', ''))[:100],
                     'lead_time': clean_int(row.get('Lead Time', 0)),
-                    'image_url': image_url,
-                    'product_url': clean_string(row.get('URL Link', ''), 500),
-                    'category_name': clean_string(row.get('gds_Categoryname', ''), 200),
-                    'family_name': clean_string(row.get('gds_familyname', ''), 200),
-                    'segment_name': clean_string(row.get('gds_segmentname', ''), 200),
-                    'country_of_origin': clean_string(row.get('country_of_origin_name', ''), 100),
+                    'image_url': image_url[:500] if image_url else '',
+                    'product_url': clean_value(row.get('URL Link', ''))[:500],
+                    'category_name': clean_value(row.get('gds_Categoryname', ''))[:200],
+                    'family_name': clean_value(row.get('gds_familyname', ''))[:200],
+                    'segment_name': clean_value(row.get('gds_segmentname', ''))[:200],
+                    'country_of_origin': clean_value(row.get('country_of_origin_name', ''))[:100],
                     'source_file': source_name,
                     'status': 'pending'
                 }
 
-                products_to_insert.append(product)
+                products.append(product)
 
             except Exception as e:
                 total_skipped += 1
                 continue
 
-        if products_to_insert:
+        if products:
             with Session(engine) as session:
-                for prod in products_to_insert:
-                    try:
-                        session.add(Product(**prod))
-                        total_imported += 1
-                    except:
-                        total_skipped += 1
+                for prod in products:
+                    session.add(Product(**prod))
                 session.commit()
+            total_imported += len(products)
 
-        print(f"  ✓ Chunk {chunk_num + 1}: +{len(products_to_insert)} products (Total: {total_imported:,})")
+        print(f"  ✓ Chunk {chunk_num + 1}: +{len(products)} (Total: {total_imported:,})")
 
-    return total_imported, total_skipped
-
-
-def import_file(filepath: str, source_name: str):
-    """Import a data file with automatic method selection."""
-    print(f"\n{'='*60}")
-    print(f"📦 Importing: {os.path.basename(filepath)}")
-    print(f"   Source name: {source_name}")
-    print(f"{'='*60}")
-
-    delimiter = detect_delimiter(filepath)
-    print(f"  Detected delimiter: {repr(delimiter)}")
-
-    # Try pandas first
-    total_imported, total_skipped = import_with_pandas(filepath, source_name, delimiter)
-
-    # If pandas failed or imported 0, try csv reader
-    if total_imported is None or total_imported == 0:
-        print(f"\n  ⚠️ Pandas method failed, trying CSV reader...")
-        total_imported, total_skipped = import_with_csv_reader(filepath, source_name, delimiter)
-
-    # Register source file
-    if total_imported and total_imported > 0:
+    # Register source
+    if total_imported > 0:
         with Session(engine) as session:
             existing = session.query(SourceFile).filter_by(filename=source_name).first()
             if existing:
                 existing.product_count = total_imported
             else:
-                source = SourceFile(
+                session.add(SourceFile(
                     filename=source_name,
-                    display_name=os.path.basename(filepath).replace('.txt', '').replace('.csv', ''),
+                    display_name=os.path.basename(filepath).replace('.txt', ''),
                     product_count=total_imported,
                     imported_at=datetime.now().isoformat()
-                )
-                session.add(source)
+                ))
             session.commit()
 
-    print(f"\n✅ Finished importing {source_name}")
-    print(f"   Total imported: {total_imported:,}")
-    print(f"   Total skipped: {total_skipped:,}")
-
-    return total_imported or 0
+    print(f"\n✅ {source_name}: {total_imported:,} imported, {total_skipped:,} skipped")
+    return total_imported
 
 
 def main():
     print("\n" + "="*60)
-    print("  GRAINGER PRODUCT DATA IMPORTER")
-    print("  Version 2.0 - Enhanced Parser")
+    print("  GRAINGER PRODUCT IMPORTER v3.0")
+    print("  Dual-format parser")
     print("="*60)
-    print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-    # Initialize database
-    print("\n📦 Initializing database...")
     init_db()
 
-    # Find data files
-    data_files = []
+    # Find files
+    files = []
+    for f in sorted(os.listdir(DATA_DIR)):
+        if f.endswith(('.txt', '.csv')):
+            path = os.path.join(DATA_DIR, f)
+            size = os.path.getsize(path) / (1024*1024)
+            files.append((path, f, size))
+            print(f"  📄 {f} ({size:.1f} MB)")
 
-    if not os.path.exists(DATA_DIR):
-        os.makedirs(DATA_DIR)
-        print(f"\n❌ Created empty data folder: {DATA_DIR}")
-        sys.exit(1)
+    if not files:
+        print("❌ No files found!")
+        return
 
-    for filename in sorted(os.listdir(DATA_DIR)):
-        if filename.endswith(('.csv', '.txt', '.dat')):
-            filepath = os.path.join(DATA_DIR, filename)
-            size_mb = os.path.getsize(filepath) / (1024 * 1024)
-            data_files.append((filepath, filename, size_mb))
-            print(f"  📄 Found: {filename} ({size_mb:.1f} MB)")
-
-    if not data_files:
-        print(f"\n❌ No data files found!")
-        sys.exit(1)
-
-    print(f"\n📊 Found {len(data_files)} file(s) to import")
-
-    # Import each file
-    total_products = 0
-    for i, (filepath, filename, size_mb) in enumerate(data_files, 1):
-        source_name = f"file{i}"
+    total = 0
+    for i, (path, name, size) in enumerate(files, 1):
+        source = f"file{i}"
         try:
-            count = import_file(filepath, source_name)
-            total_products += count
+            # File1 (smaller, ~555MB) has malformed format
+            # File2 (larger, ~1103MB) has clean format
+            if '1219' in name or size < 600:
+                count = import_file1(path, source)
+            else:
+                count = import_file2(path, source)
+            total += count
         except Exception as e:
-            print(f"\n❌ Error importing {filename}: {e}")
+            print(f"❌ Error: {e}")
             import traceback
             traceback.print_exc()
 
-    # Final stats
     print("\n" + "="*60)
-    print("  ✅ IMPORT COMPLETE!")
+    print(f"  ✅ COMPLETE! Total: {total:,} products")
     print("="*60)
-    print(f"  Total products in database: {total_products:,}")
 
     with Session(engine) as session:
-        sources = session.query(SourceFile).all()
-        print(f"\n  Files imported:")
-        for s in sources:
-            print(f"    • {s.filename}: {s.display_name} ({s.product_count:,} products)")
+        for s in session.query(SourceFile).all():
+            print(f"  • {s.filename}: {s.display_name} ({s.product_count:,})")
 
-    print(f"\n  Finished at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("\n  Start server with: python main.py")
-    print("="*60 + "\n")
+    print(f"\n  Run: python main.py")
+    print("="*60)
 
 
 if __name__ == "__main__":
