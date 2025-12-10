@@ -13,32 +13,88 @@ class Product(Base):
     __tablename__ = "products"
 
     id = Column(Integer, primary_key=True, index=True)
+
+    # Basic Info
     material_no = Column(String(50), index=True)
     short_description = Column(String(500))
     long_description = Column(Text)
+
+    # Pricing
     price = Column(Float)
     catalog_price = Column(Float)
-    unit_of_issue = Column(String(20))
+
+    # Ordering
+    unit_of_issue = Column(String(50))
     items_per_uoi = Column(Integer)
     min_order_qty = Column(Integer)
+
+    # Manufacturer
     mfr_name = Column(String(200))
     mfg_number = Column(String(100))
+    mfg_number_non_condensed = Column(String(100))
+
+    # Shipping & Lead Time
     lead_time = Column(Integer)
+    ship_pack_weight = Column(Float)
+    ship_pack_desc = Column(String(50))
+    ship_pack_height = Column(Float)
+    ship_pack_length = Column(Float)
+    ship_pack_width = Column(Float)
+    sell_pack_desc = Column(String(50))
+    sell_pack_height = Column(Float)
+    sell_pack_length = Column(Float)
+    sell_pack_width = Column(Float)
+    sell_pack_weight = Column(Float)
+
+    # Images & URLs
     image_url = Column(String(500))
+    primary_image = Column(String(200))
     product_url = Column(String(500))
+
+    # Safety & Compliance
+    msds_ind = Column(String(10))
+    msds_url_link = Column(String(500))
+    hazmat_flag = Column(String(10))
+    taa_compliant = Column(String(10))
+    california_prop_65_org = Column(String(10))
+    california_prop_65_wht = Column(String(10))
+    prop65_cancer_chem = Column(Text)
+    prop65_repro_chem = Column(Text)
+    prop65_warn_scenario = Column(Text)
+
+    # Classification
     category_name = Column(String(200), index=True)
     family_name = Column(String(200), index=True)
     segment_name = Column(String(200), index=True)
-    country_of_origin = Column(String(100))
-    source_file = Column(String(100), index=True)  # Which file: file1 or file2
 
-    # Manager decision status: pending, approved, rejected
+    # Codes
+    harmonization_code = Column(String(50))
+    upc_numbers = Column(String(200))
+    unspsc4 = Column(String(20))
+    unspsc_class_id = Column(String(20))
+    unspsc_class_name = Column(String(100))
+    unspsc_commodity_id = Column(String(20))
+    unspsc_commodity_name = Column(String(100))
+    unspsc_family_id = Column(String(20))
+    unspsc_family_name = Column(String(100))
+    unspsc_segment_id = Column(String(20))
+    unspsc_segment_name = Column(String(100))
+
+    # Country & Flags
+    country_of_origin = Column(String(20))
+    country_of_origin_name = Column(String(100))
+    jwod = Column(String(10))
+    green_material_flag = Column(String(10))
+    not4sale_state_list = Column(String(200))
+    current_catalog_page_no = Column(String(20))
+
+    # Source & Status
+    source_file = Column(String(100), index=True)
     status = Column(String(20), default='pending', index=True)
     status_updated_at = Column(String(50))
 
 
 class SourceFile(Base):
-    """Track imported source files"""
     __tablename__ = "source_files"
 
     id = Column(Integer, primary_key=True, index=True)

@@ -756,51 +756,15 @@
             const sc = statusColors[status];
 
             content.innerHTML = `
-                <div class="grid md:grid-cols-2 gap-8">
-                    <div class="bg-white rounded-2xl p-8 flex items-center justify-center">
-                        <img src="${imageUrl}" alt="${product.short_description}" class="max-h-80 object-contain"
-                            onerror="this.src='https://via.placeholder.com/400x400/1e293b/64748b?text=No+Image'">
-                    </div>
-                    <div>
-                        <div class="flex items-center gap-3 mb-4">
-                            <span class="text-sm font-mono text-blue-400 bg-blue-500/10 px-3 py-1 rounded-lg">${product.material_no}</span>
-                            <span class="px-3 py-1 ${sc.bg} text-white text-xs font-bold rounded-full uppercase">${sc.label}</span>
+                <div class="grid md:grid-cols-3 gap-8">
+                    <!-- Image & Actions Column -->
+                    <div class="md:col-span-1">
+                        <div class="bg-white rounded-2xl p-6 flex items-center justify-center mb-4">
+                            <img src="${imageUrl}" alt="${product.short_description}" class="max-h-64 object-contain"
+                                onerror="this.src='https://via.placeholder.com/400x400/1e293b/64748b?text=No+Image'">
                         </div>
 
-                        <h2 class="text-2xl font-bold mb-3">${product.short_description}</h2>
-                        <p class="text-slate-400 text-sm mb-6">${product.long_description || 'No description available'}</p>
-
-                        <div class="p-5 glass rounded-xl mb-6">
-                            <div class="flex items-center justify-between mb-3">
-                                <span class="text-slate-400">Price</span>
-                                <span class="text-3xl font-bold text-green-400">$${product.price?.toFixed(2) || '0.00'}</span>
-                            </div>
-                            <div class="flex items-center justify-between text-sm">
-                                <span class="text-slate-400">Catalog Price</span>
-                                <span class="text-slate-300">$${product.catalog_price?.toFixed(2) || '0.00'}</span>
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-2 gap-3 mb-6">
-                            <div class="p-3 glass rounded-xl">
-                                <p class="text-slate-400 text-xs">Manufacturer</p>
-                                <p class="font-medium text-sm">${product.mfr_name || 'N/A'}</p>
-                            </div>
-                            <div class="p-3 glass rounded-xl">
-                                <p class="text-slate-400 text-xs">Mfg Number</p>
-                                <p class="font-medium text-sm">${product.mfg_number || 'N/A'}</p>
-                            </div>
-                            <div class="p-3 glass rounded-xl">
-                                <p class="text-slate-400 text-xs">Category</p>
-                                <p class="font-medium text-sm">${product.category_name || 'N/A'}</p>
-                            </div>
-                            <div class="p-3 glass rounded-xl">
-                                <p class="text-slate-400 text-xs">Lead Time</p>
-                                <p class="font-medium text-sm">${product.lead_time || 'N/A'} days</p>
-                            </div>
-                        </div>
-
-                        <div class="flex gap-3">
+                        <div class="flex gap-3 mb-4">
                             <button onclick="updateStatus(${product.id}, 'approved'); closeModal();"
                                 class="flex-1 bg-green-600 hover:bg-green-700 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -819,13 +783,216 @@
 
                         ${product.product_url ? `
                         <a href="${product.product_url}" target="_blank"
-                            class="mt-3 w-full block text-center py-3 glass rounded-xl font-medium hover:bg-white/10 transition-colors text-sm">
+                            class="w-full block text-center py-3 glass rounded-xl font-medium hover:bg-white/10 transition-colors text-sm">
                             View on Grainger
                             <svg class="w-4 h-4 inline ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
                             </svg>
                         </a>
                         ` : ''}
+
+                        ${product.msds_url_link ? `
+                        <a href="${product.msds_url_link}" target="_blank"
+                            class="mt-2 w-full block text-center py-3 glass rounded-xl font-medium hover:bg-white/10 transition-colors text-sm text-amber-400">
+                            View MSDS Document
+                            <svg class="w-4 h-4 inline ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                        </a>
+                        ` : ''}
+                    </div>
+
+                    <!-- Details Column -->
+                    <div class="md:col-span-2">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="text-sm font-mono text-blue-400 bg-blue-500/10 px-3 py-1 rounded-lg">${product.material_no}</span>
+                            <span class="px-3 py-1 ${sc.bg} text-white text-xs font-bold rounded-full uppercase">${sc.label}</span>
+                            ${product.hazmat_flag === 'Y' ? '<span class="px-3 py-1 bg-orange-500 text-white text-xs font-bold rounded-full uppercase">HAZMAT</span>' : ''}
+                            ${product.taa_compliant === 'Y' ? '<span class="px-3 py-1 bg-blue-500 text-white text-xs font-bold rounded-full uppercase">TAA</span>' : ''}
+                            ${product.green_material_flag === 'Y' ? '<span class="px-3 py-1 bg-green-700 text-white text-xs font-bold rounded-full uppercase">GREEN</span>' : ''}
+                        </div>
+
+                        <h2 class="text-xl font-bold mb-2">${product.short_description}</h2>
+                        <p class="text-slate-400 text-sm mb-4">${product.long_description || 'No description available'}</p>
+
+                        <!-- Pricing Section -->
+                        <div class="p-4 glass rounded-xl mb-4">
+                            <h3 class="text-sm font-bold text-slate-300 mb-3 uppercase tracking-wide">Pricing & Ordering</h3>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div>
+                                    <p class="text-slate-400 text-xs">Price</p>
+                                    <p class="text-xl font-bold text-green-400">$${product.price?.toFixed(2) || '0.00'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">Catalog Price</p>
+                                    <p class="font-medium">$${product.catalog_price?.toFixed(2) || '0.00'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">Unit of Issue</p>
+                                    <p class="font-medium">${product.unit_of_issue || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">Items Per UOI</p>
+                                    <p class="font-medium">${product.items_per_uoi || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">Min Order Qty</p>
+                                    <p class="font-medium">${product.min_order_qty || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">Lead Time</p>
+                                    <p class="font-medium">${product.lead_time || 'N/A'} days</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Manufacturer Section -->
+                        <div class="p-4 glass rounded-xl mb-4">
+                            <h3 class="text-sm font-bold text-slate-300 mb-3 uppercase tracking-wide">Manufacturer</h3>
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                <div>
+                                    <p class="text-slate-400 text-xs">Manufacturer</p>
+                                    <p class="font-medium text-sm">${product.mfr_name || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">Mfg Number</p>
+                                    <p class="font-medium text-sm">${product.mfg_number || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">Mfg Number (Full)</p>
+                                    <p class="font-medium text-sm">${product.mfg_number_non_condensed || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">Country of Origin</p>
+                                    <p class="font-medium text-sm">${product.country_of_origin_name || product.country_of_origin || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">UPC Numbers</p>
+                                    <p class="font-medium text-sm">${product.upc_numbers || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">Harmonization Code</p>
+                                    <p class="font-medium text-sm">${product.harmonization_code || 'N/A'}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Classification Section -->
+                        <div class="p-4 glass rounded-xl mb-4">
+                            <h3 class="text-sm font-bold text-slate-300 mb-3 uppercase tracking-wide">Classification</h3>
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                <div>
+                                    <p class="text-slate-400 text-xs">Category</p>
+                                    <p class="font-medium text-sm">${product.category_name || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">Family</p>
+                                    <p class="font-medium text-sm">${product.family_name || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">Segment</p>
+                                    <p class="font-medium text-sm">${product.segment_name || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">UNSPSC4</p>
+                                    <p class="font-medium text-sm">${product.unspsc4 || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">UNSPSC Class</p>
+                                    <p class="font-medium text-sm">${product.unspsc_class_name || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">UNSPSC Commodity</p>
+                                    <p class="font-medium text-sm">${product.unspsc_commodity_name || 'N/A'}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Shipping Section -->
+                        <div class="p-4 glass rounded-xl mb-4">
+                            <h3 class="text-sm font-bold text-slate-300 mb-3 uppercase tracking-wide">Shipping & Packaging</h3>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p class="text-slate-400 text-xs mb-2">Ship Pack</p>
+                                    <div class="grid grid-cols-2 gap-2 text-sm">
+                                        <div><span class="text-slate-500">Weight:</span> ${product.ship_pack_weight || 'N/A'}</div>
+                                        <div><span class="text-slate-500">Desc:</span> ${product.ship_pack_desc || 'N/A'}</div>
+                                        <div><span class="text-slate-500">L:</span> ${product.ship_pack_length || 'N/A'}</div>
+                                        <div><span class="text-slate-500">W:</span> ${product.ship_pack_width || 'N/A'}</div>
+                                        <div><span class="text-slate-500">H:</span> ${product.ship_pack_height || 'N/A'}</div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs mb-2">Sell Pack</p>
+                                    <div class="grid grid-cols-2 gap-2 text-sm">
+                                        <div><span class="text-slate-500">Weight:</span> ${product.sell_pack_weight || 'N/A'}</div>
+                                        <div><span class="text-slate-500">Desc:</span> ${product.sell_pack_desc || 'N/A'}</div>
+                                        <div><span class="text-slate-500">L:</span> ${product.sell_pack_length || 'N/A'}</div>
+                                        <div><span class="text-slate-500">W:</span> ${product.sell_pack_width || 'N/A'}</div>
+                                        <div><span class="text-slate-500">H:</span> ${product.sell_pack_height || 'N/A'}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Safety & Compliance Section -->
+                        <div class="p-4 glass rounded-xl mb-4">
+                            <h3 class="text-sm font-bold text-slate-300 mb-3 uppercase tracking-wide">Safety & Compliance</h3>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div>
+                                    <p class="text-slate-400 text-xs">MSDS Indicator</p>
+                                    <p class="font-medium text-sm">${product.msds_ind || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">Hazmat Flag</p>
+                                    <p class="font-medium text-sm ${product.hazmat_flag === 'Y' ? 'text-orange-400' : ''}">${product.hazmat_flag || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">TAA Compliant</p>
+                                    <p class="font-medium text-sm ${product.taa_compliant === 'Y' ? 'text-blue-400' : ''}">${product.taa_compliant || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">JWOD</p>
+                                    <p class="font-medium text-sm">${product.jwod || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">Green Material</p>
+                                    <p class="font-medium text-sm ${product.green_material_flag === 'Y' ? 'text-green-400' : ''}">${product.green_material_flag || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">CA Prop 65 Org</p>
+                                    <p class="font-medium text-sm">${product.california_prop_65_org || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">CA Prop 65 Wht</p>
+                                    <p class="font-medium text-sm">${product.california_prop_65_wht || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-400 text-xs">Catalog Page</p>
+                                    <p class="font-medium text-sm">${product.current_catalog_page_no || 'N/A'}</p>
+                                </div>
+                            </div>
+                            ${product.prop65_cancer_chem ? `
+                            <div class="mt-3">
+                                <p class="text-slate-400 text-xs">Prop 65 Cancer Chem</p>
+                                <p class="font-medium text-sm text-amber-400">${product.prop65_cancer_chem}</p>
+                            </div>` : ''}
+                            ${product.prop65_repro_chem ? `
+                            <div class="mt-2">
+                                <p class="text-slate-400 text-xs">Prop 65 Repro Chem</p>
+                                <p class="font-medium text-sm text-amber-400">${product.prop65_repro_chem}</p>
+                            </div>` : ''}
+                            ${product.prop65_warn_scenario ? `
+                            <div class="mt-2">
+                                <p class="text-slate-400 text-xs">Prop 65 Warning Scenario</p>
+                                <p class="font-medium text-sm">${product.prop65_warn_scenario}</p>
+                            </div>` : ''}
+                            ${product.not4sale_state_list ? `
+                            <div class="mt-2">
+                                <p class="text-slate-400 text-xs">Not For Sale In States</p>
+                                <p class="font-medium text-sm text-red-400">${product.not4sale_state_list}</p>
+                            </div>` : ''}
+                        </div>
                     </div>
                 </div>
             `;
