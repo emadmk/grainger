@@ -12,6 +12,7 @@ from datetime import datetime
 import pandas as pd
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from openpyxl.utils import get_column_letter
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -157,7 +158,8 @@ def export_to_excel(db_path="grainger.db", output_dir="exports", parts=10):
                     )
                     # Limit column width
                     adjusted_width = min(max_length + 2, 50)
-                    worksheet.column_dimensions[chr(65 + idx) if idx < 26 else f"A{chr(65 + idx - 26)}"].width = adjusted_width
+                    col_letter = get_column_letter(idx + 1)  # 1-indexed
+                    worksheet.column_dimensions[col_letter].width = adjusted_width
 
             print(f"  Part {part_num + 1:02d}: {len(part_products):,} products -> {filename}")
             all_files.append(filepath)
