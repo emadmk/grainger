@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Grainger Product Selection API
-A beautiful web interface for browsing and selecting products.
+A beautiful web interface for browsing and approving/rejecting products.
+Port: 9090
 """
 
 from fastapi import FastAPI, Depends, Query, Request, HTTPException
@@ -12,20 +13,28 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
 from typing import Optional, List
 from datetime import datetime
+from pydantic import BaseModel
 import io
 import pandas as pd
 
-from database import get_db, init_db, Product, SelectedProduct
+from database import get_db, init_db, Product, SourceFile
 
 # Initialize FastAPI app
 app = FastAPI(
     title="Grainger Product Selection",
-    description="Browse and select products for your business",
-    version="1.0.0"
+    description="Browse and approve/reject products for your business",
+    version="2.0.0"
 )
 
 # Templates
 templates = Jinja2Templates(directory="templates")
+
+
+# Request models
+class BulkStatusRequest(BaseModel):
+    product_ids: List[int]
+    status: str  # approved or rejected
+
 
 # Initialize database on startup
 @app.on_event("startup")
@@ -43,6 +52,22 @@ async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
+@app.get("/api/files")
+async def get_source_files(db: Session = Depends(get_db)):
+    """Get list of imported source files."""
+    files = db.query(SourceFile).order_by(SourceFile.id).all()
+    return [
+        {
+            "id": f.id,
+            "filename": f.filename,
+            "display_name": f.display_name,
+            "product_count": f.product_count,
+            "imported_at": f.imported_at
+        }
+        for f in files
+    ]
+
+
 @app.get("/api/products")
 async def get_products(
     db: Session = Depends(get_db),
@@ -51,14 +76,24 @@ async def get_products(
     search: Optional[str] = None,
     category: Optional[str] = None,
     segment: Optional[str] = None,
+    source_file: Optional[str] = None,
+    status: Optional[str] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
-    sort_by: str = Query("material_no", regex="^(material_no|price|short_description|mfr_name)$"),
+    sort_by: str = Query("id", regex="^(id|material_no|price|short_description|mfr_name|status)$"),
     sort_order: str = Query("asc", regex="^(asc|desc)$")
 ):
     """Get paginated list of products with filtering and search."""
 
     query = db.query(Product)
+
+    # Apply source file filter
+    if source_file:
+        query = query.filter(Product.source_file == source_file)
+
+    # Apply status filter
+    if status:
+        query = query.filter(Product.status == status)
 
     # Apply search filter
     if search:
@@ -101,13 +136,6 @@ async def get_products(
     offset = (page - 1) * per_page
     products = query.offset(offset).limit(per_page).all()
 
-    # Get selected product IDs for this page
-    material_nos = [p.material_no for p in products]
-    selected = db.query(SelectedProduct.material_no).filter(
-        SelectedProduct.material_no.in_(material_nos)
-    ).all()
-    selected_set = {s[0] for s in selected}
-
     # Format response
     return {
         "products": [
@@ -127,7 +155,9 @@ async def get_products(
                 "family_name": p.family_name,
                 "segment_name": p.segment_name,
                 "lead_time": p.lead_time,
-                "is_selected": p.material_no in selected_set
+                "source_file": p.source_file,
+                "status": p.status or 'pending',
+                "status_updated_at": p.status_updated_at
             }
             for p in products
         ],
@@ -135,144 +165,141 @@ async def get_products(
             "page": page,
             "per_page": per_page,
             "total": total,
-            "total_pages": (total + per_page - 1) // per_page
+            "total_pages": (total + per_page - 1) // per_page if total > 0 else 0
         }
     }
 
 
 @app.get("/api/categories")
-async def get_categories(db: Session = Depends(get_db)):
+async def get_categories(
+    db: Session = Depends(get_db),
+    source_file: Optional[str] = None
+):
     """Get list of all categories with product counts."""
-    categories = db.query(
+    query = db.query(
         Product.category_name,
         func.count(Product.id).label('count')
     ).filter(
         Product.category_name != '',
-        Product.category_name != 'nan'
-    ).group_by(Product.category_name).order_by(Product.category_name).all()
+        Product.category_name != None
+    )
 
+    if source_file:
+        query = query.filter(Product.source_file == source_file)
+
+    categories = query.group_by(Product.category_name).order_by(Product.category_name).all()
     return [{"name": c[0], "count": c[1]} for c in categories if c[0]]
 
 
 @app.get("/api/segments")
-async def get_segments(db: Session = Depends(get_db)):
+async def get_segments(
+    db: Session = Depends(get_db),
+    source_file: Optional[str] = None
+):
     """Get list of all segments with product counts."""
-    segments = db.query(
+    query = db.query(
         Product.segment_name,
         func.count(Product.id).label('count')
     ).filter(
         Product.segment_name != '',
-        Product.segment_name != 'nan'
-    ).group_by(Product.segment_name).order_by(Product.segment_name).all()
+        Product.segment_name != None
+    )
 
+    if source_file:
+        query = query.filter(Product.source_file == source_file)
+
+    segments = query.group_by(Product.segment_name).order_by(Product.segment_name).all()
     return [{"name": s[0], "count": s[1]} for s in segments if s[0]]
 
 
-@app.post("/api/select/{material_no}")
-async def select_product(material_no: str, db: Session = Depends(get_db)):
-    """Add a product to the selection list."""
-    # Check if product exists
-    product = db.query(Product).filter(Product.material_no == material_no).first()
+@app.post("/api/products/{product_id}/status/{new_status}")
+async def update_product_status(
+    product_id: int,
+    new_status: str,
+    db: Session = Depends(get_db)
+):
+    """Update a product's status (approved/rejected/pending)."""
+    if new_status not in ['pending', 'approved', 'rejected']:
+        raise HTTPException(status_code=400, detail="Invalid status")
+
+    product = db.query(Product).filter(Product.id == product_id).first()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    # Check if already selected
-    existing = db.query(SelectedProduct).filter(SelectedProduct.material_no == material_no).first()
-    if existing:
-        return {"status": "already_selected", "material_no": material_no}
-
-    # Add to selection
-    selected = SelectedProduct(
-        material_no=material_no,
-        selected_at=datetime.now().isoformat()
-    )
-    db.add(selected)
+    product.status = new_status
+    product.status_updated_at = datetime.now().isoformat()
     db.commit()
 
-    return {"status": "selected", "material_no": material_no}
+    return {"status": "success", "product_id": product_id, "new_status": new_status}
 
 
-@app.delete("/api/select/{material_no}")
-async def deselect_product(material_no: str, db: Session = Depends(get_db)):
-    """Remove a product from the selection list."""
-    selected = db.query(SelectedProduct).filter(SelectedProduct.material_no == material_no).first()
-    if selected:
-        db.delete(selected)
-        db.commit()
-
-    return {"status": "deselected", "material_no": material_no}
-
-
-@app.get("/api/selected")
-async def get_selected_products(
-    db: Session = Depends(get_db),
-    page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1, le=100)
+@app.post("/api/products/bulk-status")
+async def bulk_update_status(
+    request: BulkStatusRequest,
+    db: Session = Depends(get_db)
 ):
-    """Get all selected products with pagination."""
-    # Get selected material numbers
-    selected_query = db.query(SelectedProduct)
-    total = selected_query.count()
+    """Bulk update product statuses (for Mark All feature)."""
+    if request.status not in ['pending', 'approved', 'rejected']:
+        raise HTTPException(status_code=400, detail="Invalid status")
 
-    offset = (page - 1) * per_page
-    selected_items = selected_query.offset(offset).limit(per_page).all()
-    material_nos = [s.material_no for s in selected_items]
+    now = datetime.now().isoformat()
+    updated = db.query(Product).filter(Product.id.in_(request.product_ids)).update(
+        {"status": request.status, "status_updated_at": now},
+        synchronize_session=False
+    )
+    db.commit()
 
-    # Get product details
-    products = db.query(Product).filter(Product.material_no.in_(material_nos)).all()
-    product_map = {p.material_no: p for p in products}
+    return {"status": "success", "updated_count": updated}
+
+
+@app.get("/api/stats")
+async def get_stats(
+    db: Session = Depends(get_db),
+    source_file: Optional[str] = None
+):
+    """Get database statistics."""
+    query = db.query(Product)
+
+    if source_file:
+        query = query.filter(Product.source_file == source_file)
+
+    total_products = query.count()
+    pending = query.filter(Product.status == 'pending').count()
+    approved = query.filter(Product.status == 'approved').count()
+    rejected = query.filter(Product.status == 'rejected').count()
+
+    categories = query.with_entities(func.count(func.distinct(Product.category_name))).scalar()
+    segments = query.with_entities(func.count(func.distinct(Product.segment_name))).scalar()
 
     return {
-        "products": [
-            {
-                "id": product_map[s.material_no].id if s.material_no in product_map else None,
-                "material_no": s.material_no,
-                "short_description": product_map[s.material_no].short_description if s.material_no in product_map else "",
-                "price": product_map[s.material_no].price if s.material_no in product_map else 0,
-                "mfr_name": product_map[s.material_no].mfr_name if s.material_no in product_map else "",
-                "image_url": product_map[s.material_no].image_url if s.material_no in product_map else "",
-                "category_name": product_map[s.material_no].category_name if s.material_no in product_map else "",
-                "selected_at": s.selected_at,
-                "is_selected": True
-            }
-            for s in selected_items
-        ],
-        "pagination": {
-            "page": page,
-            "per_page": per_page,
-            "total": total,
-            "total_pages": (total + per_page - 1) // per_page
-        }
+        "total_products": total_products,
+        "pending": pending,
+        "approved": approved,
+        "rejected": rejected,
+        "total_categories": categories or 0,
+        "total_segments": segments or 0
     }
 
 
-@app.get("/api/selected/count")
-async def get_selected_count(db: Session = Depends(get_db)):
-    """Get count of selected products."""
-    count = db.query(SelectedProduct).count()
-    return {"count": count}
-
-
-@app.delete("/api/selected/clear")
-async def clear_selected(db: Session = Depends(get_db)):
-    """Clear all selected products."""
-    db.query(SelectedProduct).delete()
-    db.commit()
-    return {"status": "cleared"}
-
-
 @app.get("/api/export/excel")
-async def export_excel(db: Session = Depends(get_db)):
-    """Export selected products to Excel file."""
-    # Get all selected products
-    selected = db.query(SelectedProduct).all()
-    material_nos = [s.material_no for s in selected]
+async def export_excel(
+    db: Session = Depends(get_db),
+    source_file: Optional[str] = None,
+    status: Optional[str] = None
+):
+    """Export products to Excel file."""
+    query = db.query(Product)
 
-    if not material_nos:
-        raise HTTPException(status_code=400, detail="No products selected")
+    if source_file:
+        query = query.filter(Product.source_file == source_file)
 
-    # Get product details
-    products = db.query(Product).filter(Product.material_no.in_(material_nos)).all()
+    if status:
+        query = query.filter(Product.status == status)
+
+    products = query.all()
+
+    if not products:
+        raise HTTPException(status_code=400, detail="No products to export")
 
     # Create DataFrame
     data = []
@@ -290,7 +317,9 @@ async def export_excel(db: Session = Depends(get_db)):
             "Family": p.family_name,
             "Segment": p.segment_name,
             "Lead Time": p.lead_time,
-            "Product URL": p.product_url
+            "Product URL": p.product_url,
+            "Status": p.status,
+            "Source File": p.source_file
         })
 
     df = pd.DataFrame(data)
@@ -298,32 +327,23 @@ async def export_excel(db: Session = Depends(get_db)):
     # Create Excel file in memory
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, sheet_name='Selected Products', index=False)
+        df.to_excel(writer, sheet_name='Products', index=False)
     output.seek(0)
 
-    # Return as download
-    filename = f"grainger_selected_products_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    # Filename
+    parts = ["grainger_products"]
+    if source_file:
+        parts.append(source_file)
+    if status:
+        parts.append(status)
+    parts.append(datetime.now().strftime('%Y%m%d_%H%M%S'))
+    filename = "_".join(parts) + ".xlsx"
+
     return StreamingResponse(
         output,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
-
-
-@app.get("/api/stats")
-async def get_stats(db: Session = Depends(get_db)):
-    """Get database statistics."""
-    total_products = db.query(Product).count()
-    total_selected = db.query(SelectedProduct).count()
-    categories = db.query(func.count(func.distinct(Product.category_name))).scalar()
-    segments = db.query(func.count(func.distinct(Product.segment_name))).scalar()
-
-    return {
-        "total_products": total_products,
-        "total_selected": total_selected,
-        "total_categories": categories,
-        "total_segments": segments
-    }
 
 
 # ============================================
@@ -335,7 +355,7 @@ if __name__ == "__main__":
     print("\n" + "="*60)
     print("  GRAINGER PRODUCT SELECTION SERVER")
     print("="*60)
-    print("  Starting server at http://0.0.0.0:8000")
+    print("  Starting server at http://0.0.0.0:9090")
     print("  Press Ctrl+C to stop")
     print("="*60 + "\n")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=9090)

@@ -13,10 +13,9 @@
                     colors: {
                         grainger: {
                             red: '#CC0000',
-                            dark: '#1a1a2e',
-                            darker: '#16213e',
-                            accent: '#0f3460',
-                            light: '#e94560'
+                            dark: '#0f172a',
+                            darker: '#020617',
+                            accent: '#1e293b'
                         }
                     }
                 }
@@ -27,8 +26,8 @@
         * { font-family: 'Inter', sans-serif; }
 
         .glass {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(10px);
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
@@ -37,25 +36,38 @@
         }
 
         .product-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
         }
 
-        .product-card.selected {
-            border-color: #10b981;
-            box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
+        .product-card.status-approved {
+            border-color: #22c55e !important;
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), transparent);
         }
 
-        .btn-select {
-            transition: all 0.2s ease;
+        .product-card.status-rejected {
+            border-color: #ef4444 !important;
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), transparent);
         }
 
-        .btn-select:hover {
-            transform: scale(1.05);
+        .product-card.status-pending {
+            border-color: #64748b;
+        }
+
+        .btn-action {
+            transition: all 0.15s ease;
+        }
+
+        .btn-action:hover {
+            transform: scale(1.1);
+        }
+
+        .btn-action:active {
+            transform: scale(0.95);
         }
 
         .skeleton {
-            background: linear-gradient(90deg, #2d3748 25%, #4a5568 50%, #2d3748 75%);
+            background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
             background-size: 200% 100%;
             animation: skeleton 1.5s infinite;
         }
@@ -74,20 +86,28 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        .pulse-badge {
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
-        }
-
         /* Custom scrollbar */
         ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #1a1a2e; }
-        ::-webkit-scrollbar-thumb { background: #4a5568; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #718096; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+        .file-tab {
+            transition: all 0.2s ease;
+        }
+
+        .file-tab.active {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            border-color: #60a5fa;
+        }
+
+        .status-badge {
+            font-size: 0.65rem;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
 
         .image-container {
             position: relative;
@@ -99,152 +119,166 @@
         }
 
         .product-card:hover .image-container img {
-            transform: scale(1.1);
+            transform: scale(1.05);
         }
     </style>
 </head>
-<body class="bg-grainger-dark min-h-screen text-white">
+<body class="bg-grainger-darker min-h-screen text-white">
     <!-- Header -->
-    <header class="sticky top-0 z-50 glass border-b border-gray-800">
+    <header class="sticky top-0 z-50 glass border-b border-slate-700">
         <div class="max-w-7xl mx-auto px-4 py-4">
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between flex-wrap gap-4">
                 <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 bg-grainger-red rounded-xl flex items-center justify-center">
-                        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div class="w-12 h-12 bg-gradient-to-br from-red-600 to-red-800 rounded-xl flex items-center justify-center shadow-lg">
+                        <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
                         </svg>
                     </div>
                     <div>
-                        <h1 class="text-2xl font-bold">Grainger Products</h1>
-                        <p class="text-gray-400 text-sm">Product Selection Portal</p>
+                        <h1 class="text-xl font-bold">Grainger Products</h1>
+                        <p class="text-slate-400 text-sm">Product Selection Portal</p>
                     </div>
                 </div>
 
-                <!-- Stats -->
-                <div class="hidden md:flex items-center gap-6">
-                    <div class="text-center">
-                        <p id="totalProducts" class="text-2xl font-bold text-blue-400">-</p>
-                        <p class="text-xs text-gray-400">Total Products</p>
+                <!-- Stats Cards -->
+                <div class="flex items-center gap-3">
+                    <div class="glass rounded-xl px-4 py-2 text-center min-w-[80px]">
+                        <p id="statTotal" class="text-lg font-bold text-blue-400">-</p>
+                        <p class="text-[10px] text-slate-400 uppercase">Total</p>
                     </div>
-                    <div class="text-center">
-                        <p id="totalCategories" class="text-2xl font-bold text-purple-400">-</p>
-                        <p class="text-xs text-gray-400">Categories</p>
+                    <div class="glass rounded-xl px-4 py-2 text-center min-w-[80px] cursor-pointer hover:bg-slate-700/50" onclick="filterByStatus('pending')">
+                        <p id="statPending" class="text-lg font-bold text-amber-400">-</p>
+                        <p class="text-[10px] text-slate-400 uppercase">Pending</p>
                     </div>
-                    <div class="text-center cursor-pointer" onclick="showSelected()">
-                        <p id="selectedCount" class="text-2xl font-bold text-green-400">0</p>
-                        <p class="text-xs text-gray-400">Selected</p>
+                    <div class="glass rounded-xl px-4 py-2 text-center min-w-[80px] cursor-pointer hover:bg-slate-700/50" onclick="filterByStatus('approved')">
+                        <p id="statApproved" class="text-lg font-bold text-green-400">-</p>
+                        <p class="text-[10px] text-slate-400 uppercase">Approved</p>
+                    </div>
+                    <div class="glass rounded-xl px-4 py-2 text-center min-w-[80px] cursor-pointer hover:bg-slate-700/50" onclick="filterByStatus('rejected')">
+                        <p id="statRejected" class="text-lg font-bold text-red-400">-</p>
+                        <p class="text-[10px] text-slate-400 uppercase">Rejected</p>
                     </div>
                 </div>
 
-                <!-- Export Button -->
-                <button onclick="exportExcel()" class="bg-green-600 hover:bg-green-700 px-6 py-3 rounded-xl font-medium flex items-center gap-2 transition-all hover:scale-105">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                    </svg>
-                    Export Excel
-                </button>
+                <!-- Export Buttons -->
+                <div class="flex gap-2">
+                    <button onclick="exportExcel('approved')" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all text-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        Export Approved
+                    </button>
+                    <button onclick="exportExcel(null)" class="bg-slate-600 hover:bg-slate-700 px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all text-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        Export All
+                    </button>
+                </div>
             </div>
         </div>
     </header>
 
     <div class="max-w-7xl mx-auto px-4 py-6">
+        <!-- File Selector Tabs -->
+        <div id="fileTabsContainer" class="flex gap-3 mb-6 overflow-x-auto pb-2">
+            <!-- File tabs will be loaded here -->
+        </div>
+
         <!-- Search & Filters -->
-        <div class="glass rounded-2xl p-6 mb-6">
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="glass rounded-2xl p-5 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <!-- Search -->
                 <div class="md:col-span-2">
                     <div class="relative">
-                        <input type="text" id="searchInput" placeholder="Search products, codes, manufacturers..."
-                            class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 pl-12 focus:outline-none focus:border-blue-500 transition-colors">
-                        <svg class="w-5 h-5 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <input type="text" id="searchInput" placeholder="Search products..."
+                            class="w-full bg-slate-800/50 border border-slate-600 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-blue-500 transition-colors text-sm">
+                        <svg class="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                         </svg>
                     </div>
                 </div>
 
+                <!-- Status Filter -->
+                <div>
+                    <select id="statusFilter" class="w-full bg-slate-800/50 border border-slate-600 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors text-sm">
+                        <option value="">All Status</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                    </select>
+                </div>
+
                 <!-- Category Filter -->
                 <div>
-                    <select id="categoryFilter" class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors">
+                    <select id="categoryFilter" class="w-full bg-slate-800/50 border border-slate-600 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors text-sm">
                         <option value="">All Categories</option>
                     </select>
                 </div>
 
                 <!-- Segment Filter -->
                 <div>
-                    <select id="segmentFilter" class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors">
+                    <select id="segmentFilter" class="w-full bg-slate-800/50 border border-slate-600 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors text-sm">
                         <option value="">All Segments</option>
                     </select>
                 </div>
             </div>
 
-            <!-- Quick Actions -->
-            <div class="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-gray-700">
-                <button onclick="loadProducts()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+            <!-- Mark All Actions -->
+            <div class="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-slate-700">
+                <span class="text-sm text-slate-400">Mark all on this page:</span>
+                <button onclick="markAllOnPage('approved')" class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    Approve All (20)
+                </button>
+                <button onclick="markAllOnPage('rejected')" class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    Reject All (20)
+                </button>
+                <button onclick="markAllOnPage('pending')" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    Reset All
+                </button>
+
+                <div class="flex-1"></div>
+
+                <button onclick="loadProducts()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                     </svg>
                     Refresh
                 </button>
-                <button onclick="showSelected()" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                    </svg>
-                    View Selected
-                </button>
-                <button onclick="showAllProducts()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
-                    </svg>
-                    All Products
-                </button>
-                <button onclick="clearSelection()" class="px-4 py-2 bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                    </svg>
-                    Clear All
-                </button>
-
-                <div class="flex-1"></div>
-
-                <!-- View Mode Toggle -->
-                <div class="flex items-center gap-2 bg-gray-800 rounded-lg p-1">
-                    <button onclick="setViewMode('grid')" id="gridViewBtn" class="p-2 rounded-lg bg-gray-700">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
-                        </svg>
-                    </button>
-                    <button onclick="setViewMode('list')" id="listViewBtn" class="p-2 rounded-lg">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
-                        </svg>
-                    </button>
-                </div>
             </div>
         </div>
 
         <!-- Products Grid -->
-        <div id="productsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div id="productsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
             <!-- Products will be loaded here -->
         </div>
 
         <!-- Loading State -->
         <div id="loadingState" class="hidden">
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <!-- Skeleton cards -->
-                <div class="glass rounded-2xl p-4"><div class="skeleton h-48 rounded-xl mb-4"></div><div class="skeleton h-4 rounded mb-2"></div><div class="skeleton h-4 rounded w-2/3"></div></div>
-                <div class="glass rounded-2xl p-4"><div class="skeleton h-48 rounded-xl mb-4"></div><div class="skeleton h-4 rounded mb-2"></div><div class="skeleton h-4 rounded w-2/3"></div></div>
-                <div class="glass rounded-2xl p-4"><div class="skeleton h-48 rounded-xl mb-4"></div><div class="skeleton h-4 rounded mb-2"></div><div class="skeleton h-4 rounded w-2/3"></div></div>
-                <div class="glass rounded-2xl p-4"><div class="skeleton h-48 rounded-xl mb-4"></div><div class="skeleton h-4 rounded mb-2"></div><div class="skeleton h-4 rounded w-2/3"></div></div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+                <div class="glass rounded-2xl p-4"><div class="skeleton h-44 rounded-xl mb-4"></div><div class="skeleton h-4 rounded mb-2"></div><div class="skeleton h-4 rounded w-2/3"></div></div>
+                <div class="glass rounded-2xl p-4"><div class="skeleton h-44 rounded-xl mb-4"></div><div class="skeleton h-4 rounded mb-2"></div><div class="skeleton h-4 rounded w-2/3"></div></div>
+                <div class="glass rounded-2xl p-4"><div class="skeleton h-44 rounded-xl mb-4"></div><div class="skeleton h-4 rounded mb-2"></div><div class="skeleton h-4 rounded w-2/3"></div></div>
+                <div class="glass rounded-2xl p-4"><div class="skeleton h-44 rounded-xl mb-4"></div><div class="skeleton h-4 rounded mb-2"></div><div class="skeleton h-4 rounded w-2/3"></div></div>
             </div>
         </div>
 
         <!-- Empty State -->
         <div id="emptyState" class="hidden text-center py-20">
-            <svg class="w-24 h-24 mx-auto text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-20 h-20 mx-auto text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
             </svg>
-            <h3 class="text-xl font-medium text-gray-400">No products found</h3>
-            <p class="text-gray-500 mt-2">Try adjusting your search or filters</p>
+            <h3 class="text-lg font-medium text-slate-400">No products found</h3>
+            <p class="text-slate-500 mt-2 text-sm">Try adjusting your filters or select a different file</p>
         </div>
 
         <!-- Pagination -->
@@ -270,13 +304,13 @@
 
     <!-- Toast Notification -->
     <div id="toast" class="fixed bottom-4 right-4 z-50 hidden">
-        <div class="glass rounded-xl px-6 py-4 flex items-center gap-3">
+        <div class="glass rounded-xl px-5 py-3 flex items-center gap-3 shadow-2xl">
             <div id="toastIcon" class="w-8 h-8 rounded-full flex items-center justify-center">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                 </svg>
             </div>
-            <p id="toastMessage" class="font-medium"></p>
+            <p id="toastMessage" class="font-medium text-sm"></p>
         </div>
     </div>
 
@@ -286,16 +320,13 @@
         let currentSearch = '';
         let currentCategory = '';
         let currentSegment = '';
-        let viewMode = 'grid';
-        let showingSelected = false;
+        let currentStatus = '';
+        let currentFile = '';
+        let currentProducts = [];
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-            loadStats();
-            loadCategories();
-            loadSegments();
-            loadProducts();
-            updateSelectedCount();
+            loadFiles();
 
             // Search debounce
             let searchTimeout;
@@ -309,6 +340,12 @@
             });
 
             // Filter listeners
+            document.getElementById('statusFilter').addEventListener('change', (e) => {
+                currentStatus = e.target.value;
+                currentPage = 1;
+                loadProducts();
+            });
+
             document.getElementById('categoryFilter').addEventListener('change', (e) => {
                 currentCategory = e.target.value;
                 currentPage = 1;
@@ -322,24 +359,102 @@
             });
         });
 
+        // Load source files
+        async function loadFiles() {
+            try {
+                const res = await fetch('/api/files');
+                const files = await res.json();
+
+                const container = document.getElementById('fileTabsContainer');
+
+                if (files.length === 0) {
+                    container.innerHTML = `
+                        <div class="glass rounded-xl px-6 py-4 text-center w-full">
+                            <p class="text-slate-400">No data files imported yet. Please run the import script first.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                container.innerHTML = files.map((f, i) => `
+                    <button onclick="selectFile('${f.filename}')"
+                        class="file-tab glass rounded-xl px-5 py-3 flex items-center gap-3 border-2 border-transparent hover:border-blue-500/50 transition-all ${i === 0 ? 'active' : ''}"
+                        data-file="${f.filename}">
+                        <div class="w-10 h-10 rounded-lg bg-gradient-to-br ${i === 0 ? 'from-blue-500 to-blue-700' : 'from-slate-600 to-slate-800'} flex items-center justify-center text-lg font-bold">
+                            ${i + 1}
+                        </div>
+                        <div class="text-right">
+                            <p class="font-medium text-sm">${f.display_name}</p>
+                            <p class="text-xs text-slate-400">${f.product_count.toLocaleString()} products</p>
+                        </div>
+                    </button>
+                `).join('');
+
+                // Select first file
+                if (files.length > 0) {
+                    currentFile = files[0].filename;
+                    loadStats();
+                    loadCategories();
+                    loadSegments();
+                    loadProducts();
+                }
+            } catch (e) {
+                console.error('Error loading files:', e);
+            }
+        }
+
+        // Select a file
+        function selectFile(filename) {
+            currentFile = filename;
+            currentPage = 1;
+
+            // Update tab styles
+            document.querySelectorAll('.file-tab').forEach(tab => {
+                tab.classList.remove('active');
+                if (tab.dataset.file === filename) {
+                    tab.classList.add('active');
+                }
+            });
+
+            loadStats();
+            loadCategories();
+            loadSegments();
+            loadProducts();
+        }
+
         // Load stats
         async function loadStats() {
             try {
-                const res = await fetch('/api/stats');
+                const params = currentFile ? `?source_file=${currentFile}` : '';
+                const res = await fetch(`/api/stats${params}`);
                 const data = await res.json();
-                document.getElementById('totalProducts').textContent = data.total_products.toLocaleString();
-                document.getElementById('totalCategories').textContent = data.total_categories.toLocaleString();
+
+                document.getElementById('statTotal').textContent = data.total_products.toLocaleString();
+                document.getElementById('statPending').textContent = data.pending.toLocaleString();
+                document.getElementById('statApproved').textContent = data.approved.toLocaleString();
+                document.getElementById('statRejected').textContent = data.rejected.toLocaleString();
             } catch (e) {
                 console.error('Error loading stats:', e);
             }
         }
 
+        // Filter by status
+        function filterByStatus(status) {
+            document.getElementById('statusFilter').value = status;
+            currentStatus = status;
+            currentPage = 1;
+            loadProducts();
+        }
+
         // Load categories
         async function loadCategories() {
             try {
-                const res = await fetch('/api/categories');
+                const params = currentFile ? `?source_file=${currentFile}` : '';
+                const res = await fetch(`/api/categories${params}`);
                 const categories = await res.json();
+
                 const select = document.getElementById('categoryFilter');
+                select.innerHTML = '<option value="">All Categories</option>';
                 categories.forEach(cat => {
                     const option = document.createElement('option');
                     option.value = cat.name;
@@ -354,9 +469,12 @@
         // Load segments
         async function loadSegments() {
             try {
-                const res = await fetch('/api/segments');
+                const params = currentFile ? `?source_file=${currentFile}` : '';
+                const res = await fetch(`/api/segments${params}`);
                 const segments = await res.json();
+
                 const select = document.getElementById('segmentFilter');
+                select.innerHTML = '<option value="">All Segments</option>';
                 segments.forEach(seg => {
                     const option = document.createElement('option');
                     option.value = seg.name;
@@ -371,7 +489,6 @@
         // Load products
         async function loadProducts() {
             showLoading(true);
-            showingSelected = false;
 
             try {
                 const params = new URLSearchParams({
@@ -379,13 +496,16 @@
                     per_page: 20
                 });
 
+                if (currentFile) params.append('source_file', currentFile);
                 if (currentSearch) params.append('search', currentSearch);
                 if (currentCategory) params.append('category', currentCategory);
                 if (currentSegment) params.append('segment', currentSegment);
+                if (currentStatus) params.append('status', currentStatus);
 
                 const res = await fetch(`/api/products?${params}`);
                 const data = await res.json();
 
+                currentProducts = data.products;
                 renderProducts(data.products);
                 renderPagination(data.pagination);
             } catch (e) {
@@ -394,31 +514,6 @@
             }
 
             showLoading(false);
-        }
-
-        // Show selected products
-        async function showSelected() {
-            showLoading(true);
-            showingSelected = true;
-
-            try {
-                const res = await fetch(`/api/selected?page=${currentPage}&per_page=20`);
-                const data = await res.json();
-
-                renderProducts(data.products);
-                renderPagination(data.pagination);
-            } catch (e) {
-                console.error('Error loading selected:', e);
-            }
-
-            showLoading(false);
-        }
-
-        // Show all products
-        function showAllProducts() {
-            showingSelected = false;
-            currentPage = 1;
-            loadProducts();
         }
 
         // Render products
@@ -433,78 +528,65 @@
             }
 
             emptyState.classList.add('hidden');
-
-            if (viewMode === 'grid') {
-                container.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6';
-                container.innerHTML = products.map(p => renderProductCard(p)).join('');
-            } else {
-                container.className = 'flex flex-col gap-4';
-                container.innerHTML = products.map(p => renderProductRow(p)).join('');
-            }
+            container.innerHTML = products.map(p => renderProductCard(p)).join('');
         }
 
-        // Render product card (grid view)
+        // Render product card
         function renderProductCard(product) {
             const imageUrl = getImageUrl(product.image_url);
-            const selectedClass = product.is_selected ? 'selected border-green-500' : 'border-gray-700';
-            const buttonClass = product.is_selected
-                ? 'bg-green-600 hover:bg-red-600'
-                : 'bg-blue-600 hover:bg-green-600';
-            const buttonText = product.is_selected ? 'Selected' : 'Select';
-            const buttonIcon = product.is_selected
-                ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>'
-                : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>';
+            const status = product.status || 'pending';
+
+            const statusColors = {
+                pending: { bg: 'bg-amber-500/20', text: 'text-amber-400', label: 'Pending' },
+                approved: { bg: 'bg-green-500/20', text: 'text-green-400', label: 'Approved' },
+                rejected: { bg: 'bg-red-500/20', text: 'text-red-400', label: 'Rejected' }
+            };
+
+            const sc = statusColors[status];
 
             return `
-                <div class="product-card glass rounded-2xl overflow-hidden border-2 ${selectedClass} fade-in" data-id="${product.material_no}">
-                    <div class="image-container h-48 bg-white flex items-center justify-center cursor-pointer" onclick="showProductDetail('${product.material_no}')">
-                        <img src="${imageUrl}" alt="${product.short_description}"
-                            class="max-h-full max-w-full object-contain p-4"
-                            onerror="this.src='https://via.placeholder.com/200x200?text=No+Image'">
+                <div class="product-card glass rounded-2xl overflow-hidden border-2 border-slate-700 status-${status} fade-in" data-id="${product.id}">
+                    <!-- Status Badge -->
+                    <div class="absolute top-3 right-3 z-10">
+                        <span class="status-badge ${sc.bg} ${sc.text}">${sc.label}</span>
                     </div>
+
+                    <!-- Image -->
+                    <div class="image-container h-44 bg-white flex items-center justify-center cursor-pointer relative" onclick="showProductDetail(${product.id})">
+                        <img src="${imageUrl}" alt="${product.short_description}"
+                            class="max-h-full max-w-full object-contain p-3"
+                            onerror="this.src='https://via.placeholder.com/200x200/1e293b/64748b?text=No+Image'">
+                    </div>
+
+                    <!-- Content -->
                     <div class="p-4">
                         <div class="flex items-start justify-between gap-2 mb-2">
-                            <span class="text-xs font-mono text-blue-400 bg-blue-400/10 px-2 py-1 rounded">${product.material_no}</span>
-                            <span class="text-lg font-bold text-green-400">$${product.price?.toFixed(2) || '0.00'}</span>
+                            <span class="text-xs font-mono text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">${product.material_no}</span>
+                            <span class="text-base font-bold text-green-400">$${product.price?.toFixed(2) || '0.00'}</span>
                         </div>
-                        <h3 class="font-medium text-sm mb-2 line-clamp-2 cursor-pointer hover:text-blue-400" onclick="showProductDetail('${product.material_no}')">${product.short_description || 'No description'}</h3>
-                        <p class="text-xs text-gray-400 mb-3">${product.mfr_name || 'Unknown'}</p>
-                        ${product.category_name ? `<span class="text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full">${product.category_name}</span>` : ''}
-                        <button onclick="toggleSelect('${product.material_no}')"
-                            class="btn-select w-full mt-4 ${buttonClass} py-2 rounded-xl font-medium flex items-center justify-center gap-2 transition-all">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">${buttonIcon}</svg>
-                            ${buttonText}
-                        </button>
-                    </div>
-                </div>
-            `;
-        }
 
-        // Render product row (list view)
-        function renderProductRow(product) {
-            const imageUrl = getImageUrl(product.image_url);
-            const selectedClass = product.is_selected ? 'selected border-green-500' : 'border-gray-700';
+                        <h3 class="font-medium text-sm mb-2 line-clamp-2 cursor-pointer hover:text-blue-400 leading-tight" onclick="showProductDetail(${product.id})">${product.short_description || 'No description'}</h3>
 
-            return `
-                <div class="product-card glass rounded-xl border-2 ${selectedClass} p-4 flex gap-4 fade-in" data-id="${product.material_no}">
-                    <div class="w-24 h-24 bg-white rounded-lg flex-shrink-0 flex items-center justify-center cursor-pointer" onclick="showProductDetail('${product.material_no}')">
-                        <img src="${imageUrl}" alt="${product.short_description}" class="max-h-full max-w-full object-contain p-2"
-                            onerror="this.src='https://via.placeholder.com/100x100?text=No+Image'">
-                    </div>
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-start justify-between gap-4">
-                            <div class="min-w-0">
-                                <span class="text-xs font-mono text-blue-400">${product.material_no}</span>
-                                <h3 class="font-medium truncate cursor-pointer hover:text-blue-400" onclick="showProductDetail('${product.material_no}')">${product.short_description || 'No description'}</h3>
-                                <p class="text-sm text-gray-400">${product.mfr_name || 'Unknown'}</p>
-                            </div>
-                            <div class="text-right flex-shrink-0">
-                                <p class="text-xl font-bold text-green-400">$${product.price?.toFixed(2) || '0.00'}</p>
-                                <button onclick="toggleSelect('${product.material_no}')"
-                                    class="mt-2 px-4 py-2 ${product.is_selected ? 'bg-green-600' : 'bg-blue-600'} rounded-lg text-sm font-medium transition-all hover:scale-105">
-                                    ${product.is_selected ? 'Selected' : 'Select'}
-                                </button>
-                            </div>
+                        <p class="text-xs text-slate-400 mb-3 truncate">${product.mfr_name || 'Unknown manufacturer'}</p>
+
+                        <!-- Action Buttons -->
+                        <div class="flex gap-2">
+                            <button onclick="updateStatus(${product.id}, 'approved')"
+                                class="btn-action flex-1 py-2.5 rounded-xl font-medium flex items-center justify-center gap-1.5 transition-all text-sm
+                                ${status === 'approved' ? 'bg-green-600 text-white' : 'bg-green-600/20 text-green-400 hover:bg-green-600 hover:text-white'}">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                </svg>
+                                Approve
+                            </button>
+                            <button onclick="updateStatus(${product.id}, 'rejected')"
+                                class="btn-action flex-1 py-2.5 rounded-xl font-medium flex items-center justify-center gap-1.5 transition-all text-sm
+                                ${status === 'rejected' ? 'bg-red-600 text-white' : 'bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white'}">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                </svg>
+                                Reject
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -513,8 +595,8 @@
 
         // Get proper image URL
         function getImageUrl(imageRef) {
-            if (!imageRef || imageRef === 'nan') {
-                return 'https://via.placeholder.com/200x200?text=No+Image';
+            if (!imageRef || imageRef === 'nan' || imageRef === '') {
+                return 'https://via.placeholder.com/200x200/1e293b/64748b?text=No+Image';
             }
             if (imageRef.startsWith('http')) {
                 return imageRef;
@@ -522,84 +604,76 @@
             return `https://static.grainger.com/rp/s/is/image/Grainger/${imageRef}?$s7product$`;
         }
 
-        // Toggle product selection
-        async function toggleSelect(materialNo) {
-            const card = document.querySelector(`[data-id="${materialNo}"]`);
-            const isSelected = card.classList.contains('selected');
-
+        // Update product status
+        async function updateStatus(productId, newStatus) {
             try {
-                if (isSelected) {
-                    await fetch(`/api/select/${materialNo}`, { method: 'DELETE' });
-                    card.classList.remove('selected', 'border-green-500');
-                    card.classList.add('border-gray-700');
-                    showToast('Product removed from selection', 'info');
-                } else {
-                    await fetch(`/api/select/${materialNo}`, { method: 'POST' });
-                    card.classList.add('selected', 'border-green-500');
-                    card.classList.remove('border-gray-700');
-                    showToast('Product added to selection', 'success');
+                await fetch(`/api/products/${productId}/status/${newStatus}`, { method: 'POST' });
+
+                // Update card UI
+                const card = document.querySelector(`[data-id="${productId}"]`);
+                if (card) {
+                    card.classList.remove('status-pending', 'status-approved', 'status-rejected');
+                    card.classList.add(`status-${newStatus}`);
+
+                    // Update badge
+                    const badge = card.querySelector('.status-badge');
+                    const statusColors = {
+                        pending: { bg: 'bg-amber-500/20', text: 'text-amber-400', label: 'Pending' },
+                        approved: { bg: 'bg-green-500/20', text: 'text-green-400', label: 'Approved' },
+                        rejected: { bg: 'bg-red-500/20', text: 'text-red-400', label: 'Rejected' }
+                    };
+                    const sc = statusColors[newStatus];
+                    badge.className = `status-badge ${sc.bg} ${sc.text}`;
+                    badge.textContent = sc.label;
+
+                    // Update buttons
+                    const buttons = card.querySelectorAll('.btn-action');
+                    buttons[0].className = `btn-action flex-1 py-2.5 rounded-xl font-medium flex items-center justify-center gap-1.5 transition-all text-sm ${newStatus === 'approved' ? 'bg-green-600 text-white' : 'bg-green-600/20 text-green-400 hover:bg-green-600 hover:text-white'}`;
+                    buttons[1].className = `btn-action flex-1 py-2.5 rounded-xl font-medium flex items-center justify-center gap-1.5 transition-all text-sm ${newStatus === 'rejected' ? 'bg-red-600 text-white' : 'bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white'}`;
                 }
 
-                // Update button
-                const btn = card.querySelector('button');
-                if (btn) {
-                    if (isSelected) {
-                        btn.className = 'btn-select w-full mt-4 bg-blue-600 hover:bg-green-600 py-2 rounded-xl font-medium flex items-center justify-center gap-2 transition-all';
-                        btn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>Select';
-                    } else {
-                        btn.className = 'btn-select w-full mt-4 bg-green-600 hover:bg-red-600 py-2 rounded-xl font-medium flex items-center justify-center gap-2 transition-all';
-                        btn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>Selected';
-                    }
-                }
+                // Update local product data
+                const product = currentProducts.find(p => p.id === productId);
+                if (product) product.status = newStatus;
 
-                updateSelectedCount();
+                loadStats();
+                showToast(`Product ${newStatus}`, newStatus === 'approved' ? 'success' : 'error');
             } catch (e) {
-                console.error('Error toggling selection:', e);
-                showToast('Error updating selection', 'error');
+                console.error('Error updating status:', e);
+                showToast('Error updating status', 'error');
             }
         }
 
-        // Update selected count
-        async function updateSelectedCount() {
+        // Mark all on page
+        async function markAllOnPage(status) {
+            if (currentProducts.length === 0) return;
+
+            const productIds = currentProducts.map(p => p.id);
+
             try {
-                const res = await fetch('/api/selected/count');
-                const data = await res.json();
-                document.getElementById('selectedCount').textContent = data.count.toLocaleString();
+                await fetch('/api/products/bulk-status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ product_ids: productIds, status: status })
+                });
+
+                showToast(`${productIds.length} products marked as ${status}`, status === 'approved' ? 'success' : status === 'rejected' ? 'error' : 'info');
+                loadProducts();
+                loadStats();
             } catch (e) {
-                console.error('Error updating count:', e);
+                console.error('Error bulk updating:', e);
+                showToast('Error updating products', 'error');
             }
         }
 
-        // Clear all selections
-        async function clearSelection() {
-            if (!confirm('Are you sure you want to clear all selected products?')) return;
-
-            try {
-                await fetch('/api/selected/clear', { method: 'DELETE' });
-                showToast('All selections cleared', 'info');
-                updateSelectedCount();
-                if (showingSelected) {
-                    showSelected();
-                } else {
-                    loadProducts();
-                }
-            } catch (e) {
-                console.error('Error clearing selection:', e);
-            }
-        }
-
-        // Export to Excel
-        async function exportExcel() {
-            const countRes = await fetch('/api/selected/count');
-            const countData = await countRes.json();
-
-            if (countData.count === 0) {
-                showToast('No products selected to export', 'error');
-                return;
-            }
+        // Export Excel
+        async function exportExcel(status) {
+            const params = new URLSearchParams();
+            if (currentFile) params.append('source_file', currentFile);
+            if (status) params.append('status', status);
 
             showToast('Preparing Excel file...', 'info');
-            window.location.href = '/api/export/excel';
+            window.location.href = `/api/export/excel?${params}`;
         }
 
         // Render pagination
@@ -615,7 +689,7 @@
 
             // Previous button
             html += `<button onclick="goToPage(${pagination.page - 1})" ${pagination.page === 1 ? 'disabled' : ''}
-                class="px-4 py-2 glass rounded-lg ${pagination.page === 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10'}">
+                class="px-3 py-2 glass rounded-lg ${pagination.page === 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10'}">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
                 </svg>
@@ -626,31 +700,31 @@
             const end = Math.min(pagination.total_pages, pagination.page + 2);
 
             if (start > 1) {
-                html += `<button onclick="goToPage(1)" class="px-4 py-2 glass rounded-lg hover:bg-white/10">1</button>`;
-                if (start > 2) html += `<span class="px-2 text-gray-500">...</span>`;
+                html += `<button onclick="goToPage(1)" class="px-3 py-2 glass rounded-lg hover:bg-white/10 text-sm">1</button>`;
+                if (start > 2) html += `<span class="px-2 text-slate-500">...</span>`;
             }
 
             for (let i = start; i <= end; i++) {
                 const isActive = i === pagination.page;
                 html += `<button onclick="goToPage(${i})"
-                    class="px-4 py-2 rounded-lg ${isActive ? 'bg-blue-600' : 'glass hover:bg-white/10'}">${i}</button>`;
+                    class="px-3 py-2 rounded-lg text-sm ${isActive ? 'bg-blue-600' : 'glass hover:bg-white/10'}">${i}</button>`;
             }
 
             if (end < pagination.total_pages) {
-                if (end < pagination.total_pages - 1) html += `<span class="px-2 text-gray-500">...</span>`;
-                html += `<button onclick="goToPage(${pagination.total_pages})" class="px-4 py-2 glass rounded-lg hover:bg-white/10">${pagination.total_pages}</button>`;
+                if (end < pagination.total_pages - 1) html += `<span class="px-2 text-slate-500">...</span>`;
+                html += `<button onclick="goToPage(${pagination.total_pages})" class="px-3 py-2 glass rounded-lg hover:bg-white/10 text-sm">${pagination.total_pages}</button>`;
             }
 
             // Next button
             html += `<button onclick="goToPage(${pagination.page + 1})" ${pagination.page === pagination.total_pages ? 'disabled' : ''}
-                class="px-4 py-2 glass rounded-lg ${pagination.page === pagination.total_pages ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10'}">
+                class="px-3 py-2 glass rounded-lg ${pagination.page === pagination.total_pages ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10'}">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
                 </svg>
             </button>`;
 
             // Page info
-            html += `<span class="ml-4 text-gray-400 text-sm">
+            html += `<span class="ml-4 text-slate-400 text-sm">
                 Page ${pagination.page} of ${pagination.total_pages} (${pagination.total.toLocaleString()} items)
             </span>`;
 
@@ -660,111 +734,108 @@
         // Go to page
         function goToPage(page) {
             currentPage = page;
-            if (showingSelected) {
-                showSelected();
-            } else {
-                loadProducts();
-            }
+            loadProducts();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         // Show product detail
-        async function showProductDetail(materialNo) {
+        async function showProductDetail(productId) {
+            const product = currentProducts.find(p => p.id === productId);
+            if (!product) return;
+
             const modal = document.getElementById('productModal');
             const content = document.getElementById('modalContent');
+            const imageUrl = getImageUrl(product.image_url);
+            const status = product.status || 'pending';
 
-            try {
-                const res = await fetch(`/api/products?search=${materialNo}&per_page=1`);
-                const data = await res.json();
-                const product = data.products[0];
+            const statusColors = {
+                pending: { bg: 'bg-amber-500', label: 'Pending' },
+                approved: { bg: 'bg-green-500', label: 'Approved' },
+                rejected: { bg: 'bg-red-500', label: 'Rejected' }
+            };
+            const sc = statusColors[status];
 
-                if (!product) {
-                    showToast('Product not found', 'error');
-                    return;
-                }
-
-                const imageUrl = getImageUrl(product.image_url);
-
-                content.innerHTML = `
-                    <div class="grid md:grid-cols-2 gap-8">
-                        <div class="bg-white rounded-2xl p-8 flex items-center justify-center">
-                            <img src="${imageUrl}" alt="${product.short_description}" class="max-h-96 object-contain"
-                                onerror="this.src='https://via.placeholder.com/400x400?text=No+Image'">
-                        </div>
-                        <div>
-                            <span class="text-sm font-mono text-blue-400 bg-blue-400/10 px-3 py-1 rounded-lg">${product.material_no}</span>
-                            <h2 class="text-2xl font-bold mt-4">${product.short_description}</h2>
-                            <p class="text-gray-400 mt-2">${product.long_description || 'No description available'}</p>
-
-                            <div class="mt-6 p-4 glass rounded-xl">
-                                <div class="flex items-center justify-between mb-4">
-                                    <span class="text-gray-400">Price</span>
-                                    <span class="text-3xl font-bold text-green-400">$${product.price?.toFixed(2) || '0.00'}</span>
-                                </div>
-                                <div class="flex items-center justify-between text-sm">
-                                    <span class="text-gray-400">Catalog Price</span>
-                                    <span class="text-gray-300">$${product.catalog_price?.toFixed(2) || '0.00'}</span>
-                                </div>
-                            </div>
-
-                            <div class="mt-6 grid grid-cols-2 gap-4">
-                                <div class="p-4 glass rounded-xl">
-                                    <p class="text-gray-400 text-sm">Manufacturer</p>
-                                    <p class="font-medium">${product.mfr_name || 'N/A'}</p>
-                                </div>
-                                <div class="p-4 glass rounded-xl">
-                                    <p class="text-gray-400 text-sm">Mfg Number</p>
-                                    <p class="font-medium">${product.mfg_number || 'N/A'}</p>
-                                </div>
-                                <div class="p-4 glass rounded-xl">
-                                    <p class="text-gray-400 text-sm">Category</p>
-                                    <p class="font-medium">${product.category_name || 'N/A'}</p>
-                                </div>
-                                <div class="p-4 glass rounded-xl">
-                                    <p class="text-gray-400 text-sm">Lead Time</p>
-                                    <p class="font-medium">${product.lead_time || 'N/A'} days</p>
-                                </div>
-                            </div>
-
-                            <div class="mt-6 flex gap-4">
-                                <button onclick="toggleSelect('${product.material_no}'); closeModal();"
-                                    class="flex-1 ${product.is_selected ? 'bg-green-600' : 'bg-blue-600'} hover:opacity-90 py-3 rounded-xl font-medium transition-all">
-                                    ${product.is_selected ? 'Remove from Selection' : 'Add to Selection'}
-                                </button>
-                                ${product.product_url ? `<a href="${product.product_url}" target="_blank"
-                                    class="px-6 py-3 glass rounded-xl font-medium hover:bg-white/10 transition-colors flex items-center gap-2">
-                                    View on Grainger
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                                    </svg>
-                                </a>` : ''}
-                            </div>
-                        </div>
+            content.innerHTML = `
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div class="bg-white rounded-2xl p-8 flex items-center justify-center">
+                        <img src="${imageUrl}" alt="${product.short_description}" class="max-h-80 object-contain"
+                            onerror="this.src='https://via.placeholder.com/400x400/1e293b/64748b?text=No+Image'">
                     </div>
-                `;
+                    <div>
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="text-sm font-mono text-blue-400 bg-blue-500/10 px-3 py-1 rounded-lg">${product.material_no}</span>
+                            <span class="px-3 py-1 ${sc.bg} text-white text-xs font-bold rounded-full uppercase">${sc.label}</span>
+                        </div>
 
-                modal.classList.remove('hidden');
-            } catch (e) {
-                console.error('Error loading product detail:', e);
-                showToast('Error loading product details', 'error');
-            }
+                        <h2 class="text-2xl font-bold mb-3">${product.short_description}</h2>
+                        <p class="text-slate-400 text-sm mb-6">${product.long_description || 'No description available'}</p>
+
+                        <div class="p-5 glass rounded-xl mb-6">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-slate-400">Price</span>
+                                <span class="text-3xl font-bold text-green-400">$${product.price?.toFixed(2) || '0.00'}</span>
+                            </div>
+                            <div class="flex items-center justify-between text-sm">
+                                <span class="text-slate-400">Catalog Price</span>
+                                <span class="text-slate-300">$${product.catalog_price?.toFixed(2) || '0.00'}</span>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3 mb-6">
+                            <div class="p-3 glass rounded-xl">
+                                <p class="text-slate-400 text-xs">Manufacturer</p>
+                                <p class="font-medium text-sm">${product.mfr_name || 'N/A'}</p>
+                            </div>
+                            <div class="p-3 glass rounded-xl">
+                                <p class="text-slate-400 text-xs">Mfg Number</p>
+                                <p class="font-medium text-sm">${product.mfg_number || 'N/A'}</p>
+                            </div>
+                            <div class="p-3 glass rounded-xl">
+                                <p class="text-slate-400 text-xs">Category</p>
+                                <p class="font-medium text-sm">${product.category_name || 'N/A'}</p>
+                            </div>
+                            <div class="p-3 glass rounded-xl">
+                                <p class="text-slate-400 text-xs">Lead Time</p>
+                                <p class="font-medium text-sm">${product.lead_time || 'N/A'} days</p>
+                            </div>
+                        </div>
+
+                        <div class="flex gap-3">
+                            <button onclick="updateStatus(${product.id}, 'approved'); closeModal();"
+                                class="flex-1 bg-green-600 hover:bg-green-700 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                </svg>
+                                Approve
+                            </button>
+                            <button onclick="updateStatus(${product.id}, 'rejected'); closeModal();"
+                                class="flex-1 bg-red-600 hover:bg-red-700 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                </svg>
+                                Reject
+                            </button>
+                        </div>
+
+                        ${product.product_url ? `
+                        <a href="${product.product_url}" target="_blank"
+                            class="mt-3 w-full block text-center py-3 glass rounded-xl font-medium hover:bg-white/10 transition-colors text-sm">
+                            View on Grainger
+                            <svg class="w-4 h-4 inline ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                            </svg>
+                        </a>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+
+            modal.classList.remove('hidden');
         }
 
         // Close modal
         function closeModal() {
             document.getElementById('productModal').classList.add('hidden');
-        }
-
-        // Set view mode
-        function setViewMode(mode) {
-            viewMode = mode;
-            document.getElementById('gridViewBtn').className = `p-2 rounded-lg ${mode === 'grid' ? 'bg-gray-700' : ''}`;
-            document.getElementById('listViewBtn').className = `p-2 rounded-lg ${mode === 'list' ? 'bg-gray-700' : ''}`;
-            if (showingSelected) {
-                showSelected();
-            } else {
-                loadProducts();
-            }
         }
 
         // Show loading
