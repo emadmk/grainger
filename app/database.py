@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, Text, Index
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, Text, Index, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -131,11 +131,22 @@ def get_db():
 
 def init_db():
     Base.metadata.create_all(bind=engine)
-    # Create indexes for existing tables (if they don't exist yet)
+    # Migrate existing database: add new columns and indexes
     try:
         with engine.connect() as conn:
-            conn.execute("CREATE INDEX IF NOT EXISTS ix_products_mfr_name ON products(mfr_name)")
-            conn.execute("CREATE INDEX IF NOT EXISTS ix_products_lead_time ON products(lead_time)")
-            conn.commit()
+            # Add status_updated_by column if it doesn't exist
+            try:
+                conn.execute(text("ALTER TABLE products ADD COLUMN status_updated_by VARCHAR(100)"))
+                conn.commit()
+            except Exception:
+                pass  # Column already exists
+
+            # Create indexes
+            try:
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_products_mfr_name ON products(mfr_name)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_products_lead_time ON products(lead_time)"))
+                conn.commit()
+            except Exception:
+                pass
     except Exception:
         pass
