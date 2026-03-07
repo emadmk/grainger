@@ -123,6 +123,8 @@
             font-size: 0.875rem;
             outline: none;
             border-radius: 0.75rem 0.75rem 0 0;
+            direction: ltr;
+            text-align: left;
         }
         .dropdown-wrapper .dropdown-search .dropdown-item {
             padding: 8px 14px;
@@ -130,6 +132,8 @@
             font-size: 0.875rem;
             color: #e2e8f0;
             transition: background 0.1s;
+            direction: ltr;
+            text-align: left;
         }
         .dropdown-wrapper .dropdown-search .dropdown-item:hover,
         .dropdown-wrapper .dropdown-search .dropdown-item.active {
@@ -138,6 +142,8 @@
         .dropdown-trigger {
             cursor: pointer;
             user-select: none;
+            direction: ltr;
+            text-align: left;
         }
 
         .file-tab {
@@ -316,11 +322,16 @@
                     </div>
                 </div>
 
-                <!-- Lead Time Filter -->
-                <div>
-                    <select id="leadTimeFilter" class="w-full bg-slate-800/50 border border-slate-600 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors text-sm">
-                        <option value="">All Lead Times</option>
-                    </select>
+                <!-- Lead Time Filter (Searchable) -->
+                <div class="dropdown-wrapper" id="leadTimeDropdown">
+                    <div class="dropdown-trigger w-full bg-slate-800/50 border border-slate-600 rounded-xl px-4 py-3 text-sm flex items-center justify-between" onclick="toggleDropdown('leadTimeDropdown')">
+                        <span id="leadTimeLabel" class="truncate">All Lead Times</span>
+                        <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </div>
+                    <div class="dropdown-search">
+                        <input type="text" placeholder="Search lead times..." oninput="filterDropdownItems('leadTimeDropdown', this.value)">
+                        <div class="dropdown-items"></div>
+                    </div>
                 </div>
 
                 <!-- Price Range Filter -->
@@ -487,7 +498,8 @@
         let dropdownData = {
             categoryDropdown: [],
             segmentDropdown: [],
-            manufacturerDropdown: []
+            manufacturerDropdown: [],
+            leadTimeDropdown: []
         };
 
         // Initialize
@@ -509,12 +521,6 @@
             // Filter listeners
             document.getElementById('statusFilter').addEventListener('change', (e) => {
                 currentStatus = e.target.value;
-                currentPage = 1;
-                loadProducts();
-            });
-
-            document.getElementById('leadTimeFilter').addEventListener('change', (e) => {
-                currentLeadTime = e.target.value;
                 currentPage = 1;
                 loadProducts();
             });
@@ -714,7 +720,8 @@
             const labelMap = {
                 categoryDropdown: { labelEl: 'categoryLabel', defaultLabel: 'All Categories', stateKey: 'currentCategory' },
                 segmentDropdown: { labelEl: 'segmentLabel', defaultLabel: 'All Segments', stateKey: 'currentSegment' },
-                manufacturerDropdown: { labelEl: 'manufacturerLabel', defaultLabel: 'All Manufacturers', stateKey: 'currentManufacturer' }
+                manufacturerDropdown: { labelEl: 'manufacturerLabel', defaultLabel: 'All Manufacturers', stateKey: 'currentManufacturer' },
+                leadTimeDropdown: { labelEl: 'leadTimeLabel', defaultLabel: 'All Lead Times', stateKey: 'currentLeadTime' }
             };
 
             const config = labelMap[dropdownId];
@@ -865,14 +872,10 @@
                 const res = await fetch(`/api/lead-times${params}`);
                 const leadTimes = await res.json();
 
-                const select = document.getElementById('leadTimeFilter');
-                select.innerHTML = '<option value="">All Lead Times</option>';
-                leadTimes.forEach(lt => {
-                    const option = document.createElement('option');
-                    option.value = lt.value;
-                    option.textContent = `${lt.value} days (${lt.count.toLocaleString()})`;
-                    select.appendChild(option);
-                });
+                dropdownData.leadTimeDropdown = leadTimes.map(lt => ({
+                    value: String(lt.value),
+                    label: `${lt.value} days (${lt.count.toLocaleString()})`
+                }));
             } catch (e) {
                 console.error('Error loading lead times:', e);
             }
