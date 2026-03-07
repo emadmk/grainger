@@ -387,10 +387,13 @@ async def export_excel(
     if status:
         query = query.filter(Product.status == status)
 
-    products = query.all()
+    # Check count first to avoid loading huge dataset
+    count = query.count()
+    if count == 0:
+        status_label = f" with status '{status}'" if status else ""
+        raise HTTPException(status_code=400, detail=f"No products{status_label} to export")
 
-    if not products:
-        raise HTTPException(status_code=400, detail="No products to export")
+    products = query.all()
 
     # Create DataFrame
     data = []

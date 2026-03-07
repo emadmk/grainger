@@ -771,7 +771,31 @@
             if (status) params.append('status', status);
 
             showToast('Preparing Excel file...', 'info');
-            window.location.href = `/api/export/excel?${params}`;
+
+            try {
+                const res = await fetch(`/api/export/excel?${params}`);
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    showToast(err.detail || 'Export failed', 'error');
+                    return;
+                }
+
+                // Download the file
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = res.headers.get('content-disposition')?.split('filename=')[1] || 'export.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                showToast('Excel file downloaded!', 'success');
+            } catch (e) {
+                console.error('Export error:', e);
+                showToast('Error exporting file', 'error');
+            }
         }
 
         // Render pagination
