@@ -78,6 +78,8 @@ async def get_products(
     segment: Optional[str] = None,
     source_file: Optional[str] = None,
     status: Optional[str] = None,
+    manufacturer: Optional[str] = None,
+    lead_time: Optional[int] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
     sort_by: str = Query("id", regex="^(id|material_no|price|short_description|mfr_name|status)$"),
@@ -115,6 +117,14 @@ async def get_products(
     # Apply segment filter
     if segment:
         query = query.filter(Product.segment_name == segment)
+
+    # Apply manufacturer filter
+    if manufacturer:
+        query = query.filter(Product.mfr_name == manufacturer)
+
+    # Apply lead time filter
+    if lead_time is not None:
+        query = query.filter(Product.lead_time == lead_time)
 
     # Apply price filters
     if min_price is not None:
@@ -250,6 +260,47 @@ async def get_segments(
 
     segments = query.group_by(Product.segment_name).order_by(Product.segment_name).all()
     return [{"name": s[0], "count": s[1]} for s in segments if s[0]]
+
+
+@app.get("/api/manufacturers")
+async def get_manufacturers(
+    db: Session = Depends(get_db),
+    source_file: Optional[str] = None
+):
+    """Get list of all manufacturers with product counts."""
+    query = db.query(
+        Product.mfr_name,
+        func.count(Product.id).label('count')
+    ).filter(
+        Product.mfr_name != '',
+        Product.mfr_name != None
+    )
+
+    if source_file:
+        query = query.filter(Product.source_file == source_file)
+
+    manufacturers = query.group_by(Product.mfr_name).order_by(Product.mfr_name).all()
+    return [{"name": m[0], "count": m[1]} for m in manufacturers if m[0]]
+
+
+@app.get("/api/lead-times")
+async def get_lead_times(
+    db: Session = Depends(get_db),
+    source_file: Optional[str] = None
+):
+    """Get list of all lead times with product counts."""
+    query = db.query(
+        Product.lead_time,
+        func.count(Product.id).label('count')
+    ).filter(
+        Product.lead_time != None
+    )
+
+    if source_file:
+        query = query.filter(Product.source_file == source_file)
+
+    lead_times = query.group_by(Product.lead_time).order_by(Product.lead_time).all()
+    return [{"value": lt[0], "count": lt[1]} for lt in lead_times if lt[0] is not None]
 
 
 @app.post("/api/products/{product_id}/status/{new_status}")

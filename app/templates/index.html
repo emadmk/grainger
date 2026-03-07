@@ -187,7 +187,7 @@
 
         <!-- Search & Filters -->
         <div class="glass rounded-2xl p-5 mb-6">
-            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <!-- Search -->
                 <div class="md:col-span-2">
                     <div class="relative">
@@ -215,11 +215,27 @@
                         <option value="">All Categories</option>
                     </select>
                 </div>
+            </div>
 
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                 <!-- Segment Filter -->
                 <div>
                     <select id="segmentFilter" class="w-full bg-slate-800/50 border border-slate-600 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors text-sm">
                         <option value="">All Segments</option>
+                    </select>
+                </div>
+
+                <!-- Manufacturer Filter -->
+                <div>
+                    <select id="manufacturerFilter" class="w-full bg-slate-800/50 border border-slate-600 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors text-sm">
+                        <option value="">All Manufacturers</option>
+                    </select>
+                </div>
+
+                <!-- Lead Time Filter -->
+                <div>
+                    <select id="leadTimeFilter" class="w-full bg-slate-800/50 border border-slate-600 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors text-sm">
+                        <option value="">All Lead Times</option>
                     </select>
                 </div>
             </div>
@@ -321,6 +337,8 @@
         let currentCategory = '';
         let currentSegment = '';
         let currentStatus = '';
+        let currentManufacturer = '';
+        let currentLeadTime = '';
         let currentFile = '';
         let currentProducts = [];
 
@@ -354,6 +372,18 @@
 
             document.getElementById('segmentFilter').addEventListener('change', (e) => {
                 currentSegment = e.target.value;
+                currentPage = 1;
+                loadProducts();
+            });
+
+            document.getElementById('manufacturerFilter').addEventListener('change', (e) => {
+                currentManufacturer = e.target.value;
+                currentPage = 1;
+                loadProducts();
+            });
+
+            document.getElementById('leadTimeFilter').addEventListener('change', (e) => {
+                currentLeadTime = e.target.value;
                 currentPage = 1;
                 loadProducts();
             });
@@ -396,6 +426,8 @@
                     loadStats();
                     loadCategories();
                     loadSegments();
+                    loadManufacturers();
+                    loadLeadTimes();
                     loadProducts();
                 }
             } catch (e) {
@@ -419,6 +451,8 @@
             loadStats();
             loadCategories();
             loadSegments();
+            loadManufacturers();
+            loadLeadTimes();
             loadProducts();
         }
 
@@ -486,6 +520,46 @@
             }
         }
 
+        // Load manufacturers
+        async function loadManufacturers() {
+            try {
+                const params = currentFile ? `?source_file=${currentFile}` : '';
+                const res = await fetch(`/api/manufacturers${params}`);
+                const manufacturers = await res.json();
+
+                const select = document.getElementById('manufacturerFilter');
+                select.innerHTML = '<option value="">All Manufacturers</option>';
+                manufacturers.forEach(mfr => {
+                    const option = document.createElement('option');
+                    option.value = mfr.name;
+                    option.textContent = `${mfr.name} (${mfr.count.toLocaleString()})`;
+                    select.appendChild(option);
+                });
+            } catch (e) {
+                console.error('Error loading manufacturers:', e);
+            }
+        }
+
+        // Load lead times
+        async function loadLeadTimes() {
+            try {
+                const params = currentFile ? `?source_file=${currentFile}` : '';
+                const res = await fetch(`/api/lead-times${params}`);
+                const leadTimes = await res.json();
+
+                const select = document.getElementById('leadTimeFilter');
+                select.innerHTML = '<option value="">All Lead Times</option>';
+                leadTimes.forEach(lt => {
+                    const option = document.createElement('option');
+                    option.value = lt.value;
+                    option.textContent = `${lt.value} days (${lt.count.toLocaleString()})`;
+                    select.appendChild(option);
+                });
+            } catch (e) {
+                console.error('Error loading lead times:', e);
+            }
+        }
+
         // Load products
         async function loadProducts() {
             showLoading(true);
@@ -501,6 +575,8 @@
                 if (currentCategory) params.append('category', currentCategory);
                 if (currentSegment) params.append('segment', currentSegment);
                 if (currentStatus) params.append('status', currentStatus);
+                if (currentManufacturer) params.append('manufacturer', currentManufacturer);
+                if (currentLeadTime) params.append('lead_time', currentLeadTime);
 
                 const res = await fetch(`/api/products?${params}`);
                 const data = await res.json();
