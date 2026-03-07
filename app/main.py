@@ -5,19 +5,23 @@ A beautiful web interface for browsing and approving/rejecting products.
 Port: 9090
 """
 
-from fastapi import FastAPI, Depends, Query, Request, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import FastAPI, Depends, Query, Request, HTTPException, Response
+from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, func
+from sqlalchemy import or_, func, text
 from typing import Optional, List
 from datetime import datetime
 from pydantic import BaseModel
 import io
+import os
+import hashlib
+import secrets
+import time
 import pandas as pd
 
-from database import get_db, init_db, Product, SourceFile
+from database import get_db, init_db, Product, SourceFile, User
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -29,6 +33,57 @@ app = FastAPI(
 # Templates
 templates = Jinja2Templates(directory="templates")
 
+# ============================================
+# AUTH SYSTEM
+# ============================================
+
+# In-memory session store: {token: {username, role, display_name, expires}}
+sessions = {}
+SESSION_EXPIRY = 86400 * 7  # 7 days
+
+
+def hash_password(password: str, salt: str = None) -> tuple:
+    """Hash password with salt."""
+    if salt is None:
+        salt = secrets.token_hex(16)
+    hashed = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
+    return f"{salt}:{hashed}", salt
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    """Verify password against stored hash."""
+    salt, expected_hash = stored_hash.split(":")
+    actual_hash = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
+    return actual_hash == expected_hash
+
+
+def get_current_user(request: Request) -> Optional[dict]:
+    """Get current user from session cookie."""
+    token = request.cookies.get("session_token")
+    if not token or token not in sessions:
+        return None
+    session = sessions[token]
+    if time.time() > session.get("expires", 0):
+        del sessions[token]
+        return None
+    return session
+
+
+def require_auth(request: Request) -> dict:
+    """Require authentication - raises 401 if not logged in."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+
+def require_admin(request: Request) -> dict:
+    """Require admin role."""
+    user = require_auth(request)
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
 
 # Request models
 class BulkStatusRequest(BaseModel):
@@ -36,10 +91,194 @@ class BulkStatusRequest(BaseModel):
     status: str  # approved or rejected
 
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class CreateUserRequest(BaseModel):
+    username: str
+    password: str
+    display_name: str
+    role: str = "user"
+
+
+# ============================================
+# CACHE SYSTEM for filter endpoints
+# ============================================
+filter_cache = {}
+CACHE_TTL = 300  # 5 minutes
+
+
+def get_cached(key: str):
+    """Get from cache if not expired."""
+    if key in filter_cache:
+        data, timestamp = filter_cache[key]
+        if time.time() - timestamp < CACHE_TTL:
+            return data
+    return None
+
+
+def set_cache(key: str, data):
+    """Set cache with timestamp."""
+    filter_cache[key] = (data, time.time())
+
+
+def clear_filter_cache():
+    """Clear all filter caches."""
+    filter_cache.clear()
+
+
 # Initialize database on startup
 @app.on_event("startup")
 async def startup():
     init_db()
+    # Create default admin if no users exist
+    db = next(get_db())
+    try:
+        user_count = db.query(User).count()
+        if user_count == 0:
+            pw_hash, _ = hash_password("admin123")
+            admin = User(
+                username="admin",
+                password_hash=pw_hash,
+                display_name="Administrator",
+                role="admin",
+                created_at=datetime.now().isoformat()
+            )
+            db.add(admin)
+            db.commit()
+            print("  Default admin created: admin / admin123")
+    finally:
+        db.close()
+
+
+# ============================================
+# AUTH ENDPOINTS
+# ============================================
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    """Render login page."""
+    user = get_current_user(request)
+    if user:
+        return RedirectResponse(url="/", status_code=302)
+    return templates.TemplateResponse("login.html", {"request": request})
+
+
+@app.post("/api/auth/login")
+async def login(req: LoginRequest, response: Response, db: Session = Depends(get_db)):
+    """Login endpoint."""
+    user = db.query(User).filter(User.username == req.username).first()
+    if not user or not verify_password(req.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    token = secrets.token_hex(32)
+    sessions[token] = {
+        "username": user.username,
+        "display_name": user.display_name,
+        "role": user.role,
+        "user_id": user.id,
+        "expires": time.time() + SESSION_EXPIRY
+    }
+
+    response = JSONResponse(content={
+        "status": "success",
+        "user": {
+            "username": user.username,
+            "display_name": user.display_name,
+            "role": user.role
+        }
+    })
+    response.set_cookie(
+        key="session_token",
+        value=token,
+        max_age=SESSION_EXPIRY,
+        httponly=True,
+        samesite="lax"
+    )
+    return response
+
+
+@app.post("/api/auth/logout")
+async def logout(request: Request):
+    """Logout endpoint."""
+    token = request.cookies.get("session_token")
+    if token and token in sessions:
+        del sessions[token]
+    response = JSONResponse(content={"status": "success"})
+    response.delete_cookie("session_token")
+    return response
+
+
+@app.get("/api/auth/me")
+async def get_me(request: Request):
+    """Get current user info."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {
+        "username": user["username"],
+        "display_name": user["display_name"],
+        "role": user["role"]
+    }
+
+
+@app.get("/api/users")
+async def get_users(request: Request, db: Session = Depends(get_db)):
+    """Get list of users (admin only)."""
+    admin = require_admin(request)
+    users = db.query(User).all()
+    return [
+        {
+            "id": u.id,
+            "username": u.username,
+            "display_name": u.display_name,
+            "role": u.role,
+            "created_at": u.created_at
+        }
+        for u in users
+    ]
+
+
+@app.post("/api/users")
+async def create_user(req: CreateUserRequest, request: Request, db: Session = Depends(get_db)):
+    """Create a new user (admin only)."""
+    admin = require_admin(request)
+
+    existing = db.query(User).filter(User.username == req.username).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Username already exists")
+
+    if req.role not in ['admin', 'user']:
+        raise HTTPException(status_code=400, detail="Role must be 'admin' or 'user'")
+
+    pw_hash, _ = hash_password(req.password)
+    user = User(
+        username=req.username,
+        password_hash=pw_hash,
+        display_name=req.display_name,
+        role=req.role,
+        created_at=datetime.now().isoformat()
+    )
+    db.add(user)
+    db.commit()
+
+    return {"status": "success", "user_id": user.id}
+
+
+@app.delete("/api/users/{user_id}")
+async def delete_user(user_id: int, request: Request, db: Session = Depends(get_db)):
+    """Delete a user (admin only)."""
+    admin = require_admin(request)
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.username == admin["username"]:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    db.delete(user)
+    db.commit()
+    return {"status": "success"}
 
 
 # ============================================
@@ -49,12 +288,16 @@ async def startup():
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     """Render the main product selection page."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
     return templates.TemplateResponse("index.html", {"request": request})
 
 
 @app.get("/api/files")
-async def get_source_files(db: Session = Depends(get_db)):
+async def get_source_files(request: Request, db: Session = Depends(get_db)):
     """Get list of imported source files."""
+    require_auth(request)
     files = db.query(SourceFile).order_by(SourceFile.id).all()
     return [
         {
@@ -70,6 +313,7 @@ async def get_source_files(db: Session = Depends(get_db)):
 
 @app.get("/api/products")
 async def get_products(
+    request: Request,
     db: Session = Depends(get_db),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
@@ -86,6 +330,7 @@ async def get_products(
     sort_order: str = Query("asc", regex="^(asc|desc)$")
 ):
     """Get paginated list of products with filtering and search."""
+    require_auth(request)
 
     query = db.query(Product)
 
@@ -207,7 +452,8 @@ async def get_products(
                 "current_catalog_page_no": p.current_catalog_page_no,
                 "source_file": p.source_file,
                 "status": p.status or 'pending',
-                "status_updated_at": p.status_updated_at
+                "status_updated_at": p.status_updated_at,
+                "status_updated_by": p.status_updated_by
             }
             for p in products
         ],
@@ -222,10 +468,17 @@ async def get_products(
 
 @app.get("/api/categories")
 async def get_categories(
+    request: Request,
     db: Session = Depends(get_db),
     source_file: Optional[str] = None
 ):
-    """Get list of all categories with product counts."""
+    """Get list of all categories with product counts (cached)."""
+    require_auth(request)
+    cache_key = f"categories:{source_file}"
+    cached = get_cached(cache_key)
+    if cached is not None:
+        return cached
+
     query = db.query(
         Product.category_name,
         func.count(Product.id).label('count')
@@ -238,15 +491,24 @@ async def get_categories(
         query = query.filter(Product.source_file == source_file)
 
     categories = query.group_by(Product.category_name).order_by(Product.category_name).all()
-    return [{"name": c[0], "count": c[1]} for c in categories if c[0]]
+    result = [{"name": c[0], "count": c[1]} for c in categories if c[0]]
+    set_cache(cache_key, result)
+    return result
 
 
 @app.get("/api/segments")
 async def get_segments(
+    request: Request,
     db: Session = Depends(get_db),
     source_file: Optional[str] = None
 ):
-    """Get list of all segments with product counts."""
+    """Get list of all segments with product counts (cached)."""
+    require_auth(request)
+    cache_key = f"segments:{source_file}"
+    cached = get_cached(cache_key)
+    if cached is not None:
+        return cached
+
     query = db.query(
         Product.segment_name,
         func.count(Product.id).label('count')
@@ -259,15 +521,24 @@ async def get_segments(
         query = query.filter(Product.source_file == source_file)
 
     segments = query.group_by(Product.segment_name).order_by(Product.segment_name).all()
-    return [{"name": s[0], "count": s[1]} for s in segments if s[0]]
+    result = [{"name": s[0], "count": s[1]} for s in segments if s[0]]
+    set_cache(cache_key, result)
+    return result
 
 
 @app.get("/api/manufacturers")
 async def get_manufacturers(
+    request: Request,
     db: Session = Depends(get_db),
     source_file: Optional[str] = None
 ):
-    """Get list of all manufacturers with product counts."""
+    """Get list of all manufacturers with product counts (cached)."""
+    require_auth(request)
+    cache_key = f"manufacturers:{source_file}"
+    cached = get_cached(cache_key)
+    if cached is not None:
+        return cached
+
     query = db.query(
         Product.mfr_name,
         func.count(Product.id).label('count')
@@ -280,15 +551,24 @@ async def get_manufacturers(
         query = query.filter(Product.source_file == source_file)
 
     manufacturers = query.group_by(Product.mfr_name).order_by(Product.mfr_name).all()
-    return [{"name": m[0], "count": m[1]} for m in manufacturers if m[0]]
+    result = [{"name": m[0], "count": m[1]} for m in manufacturers if m[0]]
+    set_cache(cache_key, result)
+    return result
 
 
 @app.get("/api/lead-times")
 async def get_lead_times(
+    request: Request,
     db: Session = Depends(get_db),
     source_file: Optional[str] = None
 ):
-    """Get list of all lead times with product counts."""
+    """Get list of all lead times with product counts (cached)."""
+    require_auth(request)
+    cache_key = f"lead_times:{source_file}"
+    cached = get_cached(cache_key)
+    if cached is not None:
+        return cached
+
     query = db.query(
         Product.lead_time,
         func.count(Product.id).label('count')
@@ -300,16 +580,21 @@ async def get_lead_times(
         query = query.filter(Product.source_file == source_file)
 
     lead_times = query.group_by(Product.lead_time).order_by(Product.lead_time).all()
-    return [{"value": lt[0], "count": lt[1]} for lt in lead_times if lt[0] is not None]
+    result = [{"value": lt[0], "count": lt[1]} for lt in lead_times if lt[0] is not None]
+    set_cache(cache_key, result)
+    return result
 
 
 @app.post("/api/products/{product_id}/status/{new_status}")
 async def update_product_status(
     product_id: int,
     new_status: str,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """Update a product's status (approved/rejected/pending)."""
+    user = require_auth(request)
+
     if new_status not in ['pending', 'approved', 'rejected']:
         raise HTTPException(status_code=400, detail="Invalid status")
 
@@ -319,23 +604,37 @@ async def update_product_status(
 
     product.status = new_status
     product.status_updated_at = datetime.now().isoformat()
+    product.status_updated_by = user["display_name"]
     db.commit()
 
-    return {"status": "success", "product_id": product_id, "new_status": new_status}
+    return {"status": "success", "product_id": product_id, "new_status": new_status,
+            "updated_by": user["display_name"]}
 
 
 @app.post("/api/products/bulk-status")
 async def bulk_update_status(
-    request: BulkStatusRequest,
+    bulk_request: BulkStatusRequest,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """Bulk update product statuses (for Mark All feature)."""
-    if request.status not in ['pending', 'approved', 'rejected']:
+    user = require_auth(request)
+
+    if bulk_request.status not in ['pending', 'approved', 'rejected']:
         raise HTTPException(status_code=400, detail="Invalid status")
 
+    # Only admin can reset to pending
+    if bulk_request.status == 'pending':
+        if user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Only admin can reset products")
+
     now = datetime.now().isoformat()
-    updated = db.query(Product).filter(Product.id.in_(request.product_ids)).update(
-        {"status": request.status, "status_updated_at": now},
+    updated = db.query(Product).filter(Product.id.in_(bulk_request.product_ids)).update(
+        {
+            "status": bulk_request.status,
+            "status_updated_at": now,
+            "status_updated_by": user["display_name"]
+        },
         synchronize_session=False
     )
     db.commit()
@@ -345,10 +644,13 @@ async def bulk_update_status(
 
 @app.get("/api/stats")
 async def get_stats(
+    request: Request,
     db: Session = Depends(get_db),
     source_file: Optional[str] = None
 ):
     """Get database statistics."""
+    require_auth(request)
+
     query = db.query(Product)
 
     if source_file:
@@ -374,11 +676,14 @@ async def get_stats(
 
 @app.get("/api/export/excel")
 async def export_excel(
+    request: Request,
     db: Session = Depends(get_db),
     source_file: Optional[str] = None,
     status: Optional[str] = None
 ):
     """Export products to Excel file."""
+    require_auth(request)
+
     query = db.query(Product)
 
     if source_file:
@@ -454,6 +759,7 @@ async def export_excel(
             "Not For Sale States": p.not4sale_state_list,
             "Catalog Page No": p.current_catalog_page_no,
             "Status": p.status,
+            "Status Updated By": p.status_updated_by,
             "Source File": p.source_file
         })
 
@@ -491,6 +797,7 @@ if __name__ == "__main__":
     print("  GRAINGER PRODUCT SELECTION SERVER")
     print("="*60)
     print("  Starting server at http://0.0.0.0:9090")
+    print("  Default admin: admin / admin123")
     print("  Press Ctrl+C to stop")
     print("="*60 + "\n")
     uvicorn.run(app, host="0.0.0.0", port=9090)

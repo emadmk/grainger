@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, Text
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, Text, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -92,6 +92,12 @@ class Product(Base):
     source_file = Column(String(100), index=True)
     status = Column(String(20), default='pending', index=True)
     status_updated_at = Column(String(50))
+    status_updated_by = Column(String(100))
+
+    __table_args__ = (
+        Index('ix_products_mfr_name', 'mfr_name'),
+        Index('ix_products_lead_time', 'lead_time'),
+    )
 
 
 class SourceFile(Base):
@@ -104,6 +110,17 @@ class SourceFile(Base):
     imported_at = Column(String(50))
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(100), unique=True, index=True)
+    password_hash = Column(String(200))
+    display_name = Column(String(200))
+    role = Column(String(20), default='user')  # 'admin' or 'user'
+    created_at = Column(String(50))
+
+
 def get_db():
     db = SessionLocal()
     try:
@@ -114,3 +131,11 @@ def get_db():
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    # Create indexes for existing tables (if they don't exist yet)
+    try:
+        with engine.connect() as conn:
+            conn.execute("CREATE INDEX IF NOT EXISTS ix_products_mfr_name ON products(mfr_name)")
+            conn.execute("CREATE INDEX IF NOT EXISTS ix_products_lead_time ON products(lead_time)")
+            conn.commit()
+    except Exception:
+        pass
