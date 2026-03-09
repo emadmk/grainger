@@ -519,19 +519,19 @@
             let searchTimeout;
             document.getElementById('searchInput').addEventListener('input', (e) => {
                 clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(() => {
+                searchTimeout = setTimeout(async () => {
                     currentSearch = e.target.value;
                     currentPage = 1;
-                    reloadAllDropdowns();
+                    await reloadAllDropdowns();
                     loadProducts();
                 }, 300);
             });
 
             // Filter listeners
-            document.getElementById('statusFilter').addEventListener('change', (e) => {
+            document.getElementById('statusFilter').addEventListener('change', async (e) => {
                 currentStatus = e.target.value;
                 currentPage = 1;
-                reloadAllDropdowns();
+                await reloadAllDropdowns();
                 loadProducts();
             });
 
@@ -546,11 +546,11 @@
             ['minPrice', 'maxPrice'].forEach(id => {
                 document.getElementById(id).addEventListener('input', (e) => {
                     clearTimeout(priceTimeout);
-                    priceTimeout = setTimeout(() => {
+                    priceTimeout = setTimeout(async () => {
                         currentMinPrice = document.getElementById('minPrice').value;
                         currentMaxPrice = document.getElementById('maxPrice').value;
                         currentPage = 1;
-                        reloadAllDropdowns();
+                        await reloadAllDropdowns();
                         loadProducts();
                     }, 500);
                 });
@@ -745,7 +745,7 @@
             renderDropdownItems(dropdownId, searchText);
         }
 
-        function selectDropdownItem(dropdownId, index) {
+        async function selectDropdownItem(dropdownId, index) {
             const wrapper = document.getElementById(dropdownId);
             wrapper.classList.remove('open');
 
@@ -771,7 +771,7 @@
                     }
                 }
                 currentPage = 1;
-                reloadAllDropdowns();
+                await reloadAllDropdowns();
                 loadProducts();
             }
         }
@@ -814,10 +814,7 @@
                 if (files.length > 0) {
                     currentFile = files[0].filename;
                     loadStats();
-                    loadCategories();
-                    loadSegments();
-                    loadManufacturers();
-                    loadLeadTimes();
+                    await reloadAllDropdowns();
                     loadProducts();
                 }
             } catch (e) {
@@ -825,9 +822,29 @@
             }
         }
 
-        function selectFile(filename) {
+        async function selectFile(filename) {
             currentFile = filename;
             currentPage = 1;
+
+            // Reset all filters when switching files
+            currentSearch = '';
+            currentCategory = '';
+            currentSegment = '';
+            currentStatus = '';
+            currentManufacturer = '';
+            currentLeadTime = '';
+            currentMinPrice = '';
+            currentMaxPrice = '';
+
+            // Reset UI elements
+            document.getElementById('searchInput').value = '';
+            document.getElementById('statusFilter').value = '';
+            document.getElementById('minPrice').value = '';
+            document.getElementById('maxPrice').value = '';
+            document.getElementById('categoryLabel').textContent = 'All Categories';
+            document.getElementById('segmentLabel').textContent = 'All Segments';
+            document.getElementById('manufacturerLabel').textContent = 'All Manufacturers';
+            document.getElementById('leadTimeLabel').textContent = 'All Lead Times';
 
             document.querySelectorAll('.file-tab').forEach(tab => {
                 tab.classList.remove('active');
@@ -835,10 +852,7 @@
             });
 
             loadStats();
-            loadCategories();
-            loadSegments();
-            loadManufacturers();
-            loadLeadTimes();
+            await reloadAllDropdowns();
             loadProducts();
         }
 
@@ -882,11 +896,13 @@
         }
 
         // Reload all dropdown data based on current filters
-        function reloadAllDropdowns() {
-            loadCategories();
-            loadSegments();
-            loadManufacturers();
-            loadLeadTimes();
+        async function reloadAllDropdowns() {
+            await Promise.all([
+                loadCategories(),
+                loadSegments(),
+                loadManufacturers(),
+                loadLeadTimes()
+            ]);
         }
 
         function validateDropdownSelection(dropdownId, stateKey, labelElId, defaultLabel, items) {
