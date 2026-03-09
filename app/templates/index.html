@@ -486,20 +486,22 @@
     </div>
 
     <script>
-        // State
-        let currentPage = 1;
-        let totalPages = 1;
-        let perPage = 20;
-        let currentSearch = '';
-        let currentCategory = '';
-        let currentSegment = '';
-        let currentStatus = '';
-        let currentManufacturer = '';
-        let currentLeadTime = '';
-        let currentMinPrice = '';
-        let currentMaxPrice = '';
-        let currentFile = '';
-        let currentProducts = [];
+        // State - MUST use 'var' because selectDropdownItem and
+        // validateDropdownSelection access these via window[stateKey].
+        // 'let' variables are NOT properties of window.
+        var currentPage = 1;
+        var totalPages = 1;
+        var perPage = 20;
+        var currentSearch = '';
+        var currentCategory = '';
+        var currentSegment = '';
+        var currentStatus = '';
+        var currentManufacturer = '';
+        var currentLeadTime = '';
+        var currentMinPrice = '';
+        var currentMaxPrice = '';
+        var currentFile = '';
+        var currentProducts = [];
         let currentUser = null;
 
         // Dropdown data stores
