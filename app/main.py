@@ -470,14 +470,14 @@ async def get_products(
 async def get_categories(
     request: Request,
     db: Session = Depends(get_db),
-    source_file: Optional[str] = None
+    source_file: Optional[str] = None,
+    manufacturer: Optional[str] = None,
+    segment: Optional[str] = None,
+    lead_time: Optional[int] = None,
+    status: Optional[str] = None
 ):
-    """Get list of all categories with product counts (cached)."""
+    """Get list of all categories with product counts, filtered by other active filters."""
     require_auth(request)
-    cache_key = f"categories:{source_file}"
-    cached = get_cached(cache_key)
-    if cached is not None:
-        return cached
 
     query = db.query(
         Product.category_name,
@@ -489,10 +489,17 @@ async def get_categories(
 
     if source_file:
         query = query.filter(Product.source_file == source_file)
+    if manufacturer:
+        query = query.filter(Product.mfr_name == manufacturer)
+    if segment:
+        query = query.filter(Product.segment_name == segment)
+    if lead_time is not None:
+        query = query.filter(Product.lead_time == lead_time)
+    if status:
+        query = query.filter(Product.status == status)
 
     categories = query.group_by(Product.category_name).order_by(Product.category_name).all()
     result = [{"name": c[0], "count": c[1]} for c in categories if c[0]]
-    set_cache(cache_key, result)
     return result
 
 
@@ -500,14 +507,14 @@ async def get_categories(
 async def get_segments(
     request: Request,
     db: Session = Depends(get_db),
-    source_file: Optional[str] = None
+    source_file: Optional[str] = None,
+    manufacturer: Optional[str] = None,
+    category: Optional[str] = None,
+    lead_time: Optional[int] = None,
+    status: Optional[str] = None
 ):
-    """Get list of all segments with product counts (cached)."""
+    """Get list of all segments with product counts, filtered by other active filters."""
     require_auth(request)
-    cache_key = f"segments:{source_file}"
-    cached = get_cached(cache_key)
-    if cached is not None:
-        return cached
 
     query = db.query(
         Product.segment_name,
@@ -519,10 +526,17 @@ async def get_segments(
 
     if source_file:
         query = query.filter(Product.source_file == source_file)
+    if manufacturer:
+        query = query.filter(Product.mfr_name == manufacturer)
+    if category:
+        query = query.filter(Product.category_name == category)
+    if lead_time is not None:
+        query = query.filter(Product.lead_time == lead_time)
+    if status:
+        query = query.filter(Product.status == status)
 
     segments = query.group_by(Product.segment_name).order_by(Product.segment_name).all()
     result = [{"name": s[0], "count": s[1]} for s in segments if s[0]]
-    set_cache(cache_key, result)
     return result
 
 
@@ -530,14 +544,14 @@ async def get_segments(
 async def get_manufacturers(
     request: Request,
     db: Session = Depends(get_db),
-    source_file: Optional[str] = None
+    source_file: Optional[str] = None,
+    category: Optional[str] = None,
+    segment: Optional[str] = None,
+    lead_time: Optional[int] = None,
+    status: Optional[str] = None
 ):
-    """Get list of all manufacturers with product counts (cached)."""
+    """Get list of all manufacturers with product counts, filtered by other active filters."""
     require_auth(request)
-    cache_key = f"manufacturers:{source_file}"
-    cached = get_cached(cache_key)
-    if cached is not None:
-        return cached
 
     query = db.query(
         Product.mfr_name,
@@ -549,10 +563,17 @@ async def get_manufacturers(
 
     if source_file:
         query = query.filter(Product.source_file == source_file)
+    if category:
+        query = query.filter(Product.category_name == category)
+    if segment:
+        query = query.filter(Product.segment_name == segment)
+    if lead_time is not None:
+        query = query.filter(Product.lead_time == lead_time)
+    if status:
+        query = query.filter(Product.status == status)
 
     manufacturers = query.group_by(Product.mfr_name).order_by(Product.mfr_name).all()
     result = [{"name": m[0], "count": m[1]} for m in manufacturers if m[0]]
-    set_cache(cache_key, result)
     return result
 
 
@@ -560,14 +581,14 @@ async def get_manufacturers(
 async def get_lead_times(
     request: Request,
     db: Session = Depends(get_db),
-    source_file: Optional[str] = None
+    source_file: Optional[str] = None,
+    manufacturer: Optional[str] = None,
+    category: Optional[str] = None,
+    segment: Optional[str] = None,
+    status: Optional[str] = None
 ):
-    """Get list of all lead times with product counts (cached)."""
+    """Get list of all lead times with product counts, filtered by other active filters."""
     require_auth(request)
-    cache_key = f"lead_times:{source_file}"
-    cached = get_cached(cache_key)
-    if cached is not None:
-        return cached
 
     query = db.query(
         Product.lead_time,
@@ -578,10 +599,17 @@ async def get_lead_times(
 
     if source_file:
         query = query.filter(Product.source_file == source_file)
+    if manufacturer:
+        query = query.filter(Product.mfr_name == manufacturer)
+    if category:
+        query = query.filter(Product.category_name == category)
+    if segment:
+        query = query.filter(Product.segment_name == segment)
+    if status:
+        query = query.filter(Product.status == status)
 
     lead_times = query.group_by(Product.lead_time).order_by(Product.lead_time).all()
     result = [{"value": lt[0], "count": lt[1]} for lt in lead_times if lt[0] is not None]
-    set_cache(cache_key, result)
     return result
 
 

@@ -523,6 +523,7 @@
             document.getElementById('statusFilter').addEventListener('change', (e) => {
                 currentStatus = e.target.value;
                 currentPage = 1;
+                reloadAllDropdowns();
                 loadProducts();
             });
 
@@ -761,6 +762,7 @@
                     }
                 }
                 currentPage = 1;
+                reloadAllDropdowns();
                 loadProducts();
             }
         }
@@ -850,12 +852,34 @@
             document.getElementById('statusFilter').value = status;
             currentStatus = status;
             currentPage = 1;
+            reloadAllDropdowns();
             loadProducts();
+        }
+
+        // Build filter query params for dropdown APIs (exclude the dropdown's own filter)
+        function buildFilterParams(exclude) {
+            const params = new URLSearchParams();
+            if (currentFile) params.append('source_file', currentFile);
+            if (currentStatus) params.append('status', currentStatus);
+            if (exclude !== 'category' && currentCategory) params.append('category', currentCategory);
+            if (exclude !== 'segment' && currentSegment) params.append('segment', currentSegment);
+            if (exclude !== 'manufacturer' && currentManufacturer) params.append('manufacturer', currentManufacturer);
+            if (exclude !== 'lead_time' && currentLeadTime) params.append('lead_time', currentLeadTime);
+            const str = params.toString();
+            return str ? `?${str}` : '';
+        }
+
+        // Reload all dropdown data based on current filters
+        function reloadAllDropdowns() {
+            loadCategories();
+            loadSegments();
+            loadManufacturers();
+            loadLeadTimes();
         }
 
         async function loadCategories() {
             try {
-                const params = currentFile ? `?source_file=${currentFile}` : '';
+                const params = buildFilterParams('category');
                 const res = await fetch(`/api/categories${params}`);
                 const categories = await res.json();
 
@@ -870,7 +894,7 @@
 
         async function loadSegments() {
             try {
-                const params = currentFile ? `?source_file=${currentFile}` : '';
+                const params = buildFilterParams('segment');
                 const res = await fetch(`/api/segments${params}`);
                 const segments = await res.json();
 
@@ -885,7 +909,7 @@
 
         async function loadManufacturers() {
             try {
-                const params = currentFile ? `?source_file=${currentFile}` : '';
+                const params = buildFilterParams('manufacturer');
                 const res = await fetch(`/api/manufacturers${params}`);
                 const manufacturers = await res.json();
 
@@ -900,7 +924,7 @@
 
         async function loadLeadTimes() {
             try {
-                const params = currentFile ? `?source_file=${currentFile}` : '';
+                const params = buildFilterParams('lead_time');
                 const res = await fetch(`/api/lead-times${params}`);
                 const leadTimes = await res.json();
 
