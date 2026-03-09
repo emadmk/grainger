@@ -519,20 +519,18 @@
             let searchTimeout;
             document.getElementById('searchInput').addEventListener('input', (e) => {
                 clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(async () => {
+                searchTimeout = setTimeout(() => {
                     currentSearch = e.target.value;
                     currentPage = 1;
-                    await reloadAllDropdowns();
-                    loadProducts();
+                    applyFiltersAndLoad();
                 }, 300);
             });
 
             // Filter listeners
-            document.getElementById('statusFilter').addEventListener('change', async (e) => {
+            document.getElementById('statusFilter').addEventListener('change', (e) => {
                 currentStatus = e.target.value;
                 currentPage = 1;
-                await reloadAllDropdowns();
-                loadProducts();
+                applyFiltersAndLoad();
             });
 
             document.getElementById('perPageSelect').addEventListener('change', (e) => {
@@ -546,12 +544,11 @@
             ['minPrice', 'maxPrice'].forEach(id => {
                 document.getElementById(id).addEventListener('input', (e) => {
                     clearTimeout(priceTimeout);
-                    priceTimeout = setTimeout(async () => {
+                    priceTimeout = setTimeout(() => {
                         currentMinPrice = document.getElementById('minPrice').value;
                         currentMaxPrice = document.getElementById('maxPrice').value;
                         currentPage = 1;
-                        await reloadAllDropdowns();
-                        loadProducts();
+                        applyFiltersAndLoad();
                     }, 500);
                 });
             });
@@ -771,9 +768,35 @@
                     }
                 }
                 currentPage = 1;
-                await reloadAllDropdowns();
-                loadProducts();
+                await applyFiltersAndLoad();
             }
+        }
+
+        // Central function: reload dropdowns, re-render them, then load products
+        // Uses a version counter to prevent stale responses from overwriting newer ones
+        let _filterVersion = 0;
+        async function applyFiltersAndLoad() {
+            const myVersion = ++_filterVersion;
+
+            // 1. Reload all dropdown data (parallel fetch)
+            await Promise.all([
+                loadCategories(),
+                loadSegments(),
+                loadManufacturers(),
+                loadLeadTimes()
+            ]);
+
+            // If a newer filter change happened while we were loading, abort
+            if (myVersion !== _filterVersion) return;
+
+            // 2. Re-render dropdown items so they reflect updated data
+            renderDropdownItems('categoryDropdown', '');
+            renderDropdownItems('segmentDropdown', '');
+            renderDropdownItems('manufacturerDropdown', '');
+            renderDropdownItems('leadTimeDropdown', '');
+
+            // 3. Now load products with the validated filter values
+            loadProducts();
         }
 
         // ============================================
@@ -814,8 +837,7 @@
                 if (files.length > 0) {
                     currentFile = files[0].filename;
                     loadStats();
-                    await reloadAllDropdowns();
-                    loadProducts();
+                    await applyFiltersAndLoad();
                 }
             } catch (e) {
                 console.error('Error loading files:', e);
@@ -852,8 +874,7 @@
             });
 
             loadStats();
-            await reloadAllDropdowns();
-            loadProducts();
+            await applyFiltersAndLoad();
         }
 
         async function loadStats() {
@@ -871,12 +892,11 @@
             }
         }
 
-        function filterByStatus(status) {
+        async function filterByStatus(status) {
             document.getElementById('statusFilter').value = status;
             currentStatus = status;
             currentPage = 1;
-            reloadAllDropdowns();
-            loadProducts();
+            await applyFiltersAndLoad();
         }
 
         // Build filter query params for dropdown APIs (exclude the dropdown's own filter)
@@ -895,7 +915,7 @@
             return str ? `?${str}` : '';
         }
 
-        // Reload all dropdown data based on current filters
+        // Legacy alias - now handled by applyFiltersAndLoad
         async function reloadAllDropdowns() {
             await Promise.all([
                 loadCategories(),
@@ -903,16 +923,25 @@
                 loadManufacturers(),
                 loadLeadTimes()
             ]);
+            // Re-render dropdown items
+            renderDropdownItems('categoryDropdown', '');
+            renderDropdownItems('segmentDropdown', '');
+            renderDropdownItems('manufacturerDropdown', '');
+            renderDropdownItems('leadTimeDropdown', '');
         }
 
         function validateDropdownSelection(dropdownId, stateKey, labelElId, defaultLabel, items) {
             const currentVal = window[stateKey];
             if (currentVal && !items.some(i => i.value === currentVal)) {
+                console.log(`[validate] ${stateKey}="${currentVal}" NOT found in ${items.length} items, resetting to empty`);
                 window[stateKey] = '';
                 document.getElementById(labelElId).textContent = defaultLabel;
             } else if (currentVal) {
                 const match = items.find(i => i.value === currentVal);
-                if (match) document.getElementById(labelElId).textContent = match.label;
+                if (match) {
+                    console.log(`[validate] ${stateKey}="${currentVal}" found, label="${match.label}"`);
+                    document.getElementById(labelElId).textContent = match.label;
+                }
             }
         }
 
@@ -1030,7 +1059,9 @@
         // ============================================
         // PRODUCTS
         // ============================================
+        let _productsVersion = 0;
         async function loadProducts() {
+            const myVersion = ++_productsVersion;
             showLoading(true);
 
             try {
@@ -1049,20 +1080,30 @@
                 if (currentMinPrice) params.append('min_price', currentMinPrice);
                 if (currentMaxPrice) params.append('max_price', currentMaxPrice);
 
+                console.log('[loadProducts] Fetching with params:', params.toString());
+
                 const res = await fetch(`/api/products?${params}`);
                 if (res.status === 401) { window.location.href = '/login'; return; }
+
+                // If a newer loadProducts call was made, discard this response
+                if (myVersion !== _productsVersion) {
+                    console.log('[loadProducts] Discarding stale response (version', myVersion, 'vs', _productsVersion, ')');
+                    return;
+                }
+
                 const data = await res.json();
 
                 currentProducts = data.products;
                 totalPages = data.pagination.total_pages;
                 renderProducts(data.products);
                 renderPagination(data.pagination);
+                console.log('[loadProducts] Rendered', data.products.length, 'of', data.pagination.total, 'total products');
             } catch (e) {
                 console.error('Error loading products:', e);
                 showToast('Error loading products', 'error');
             }
 
-            showLoading(false);
+            if (myVersion === _productsVersion) showLoading(false);
         }
 
         function renderProducts(products) {
