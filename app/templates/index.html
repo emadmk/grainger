@@ -689,6 +689,9 @@
             }
         }
 
+        // Store filtered items for index-based selection
+        let dropdownFilteredItems = {};
+
         function renderDropdownItems(dropdownId, filter) {
             const wrapper = document.getElementById(dropdownId);
             const itemsContainer = wrapper.querySelector('.dropdown-items');
@@ -698,9 +701,18 @@
                 ? data.filter(d => d.label.toLowerCase().includes(filter.toLowerCase()))
                 : data;
 
-            let html = `<div class="dropdown-item" onclick="selectDropdownItem('${dropdownId}', '', 'All')" style="color: #94a3b8; font-style: italic;">-- Clear Filter --</div>`;
-            filtered.slice(0, 200).forEach(d => {
-                html += `<div class="dropdown-item" onclick="selectDropdownItem('${dropdownId}', '${d.value.replace(/'/g, "\\'")}', '${d.label.replace(/'/g, "\\'")}')">${d.label}</div>`;
+            // Store filtered items for index-based lookup
+            dropdownFilteredItems[dropdownId] = filtered;
+
+            const escapeHtml = (str) => {
+                const div = document.createElement('div');
+                div.textContent = str;
+                return div.innerHTML;
+            };
+
+            let html = `<div class="dropdown-item" data-dropdown-id="${dropdownId}" data-index="-1" style="color: #94a3b8; font-style: italic;">-- Clear Filter --</div>`;
+            filtered.slice(0, 200).forEach((d, i) => {
+                html += `<div class="dropdown-item" data-dropdown-id="${dropdownId}" data-index="${i}">${escapeHtml(d.label)}</div>`;
             });
 
             if (filtered.length > 200) {
@@ -708,13 +720,22 @@
             }
 
             itemsContainer.innerHTML = html;
+
+            // Use event delegation for clicks
+            itemsContainer.onclick = function(e) {
+                const item = e.target.closest('.dropdown-item[data-index]');
+                if (!item) return;
+                const ddId = item.getAttribute('data-dropdown-id');
+                const idx = parseInt(item.getAttribute('data-index'));
+                selectDropdownItem(ddId, idx);
+            };
         }
 
         function filterDropdownItems(dropdownId, searchText) {
             renderDropdownItems(dropdownId, searchText);
         }
 
-        function selectDropdownItem(dropdownId, value, label) {
+        function selectDropdownItem(dropdownId, index) {
             const wrapper = document.getElementById(dropdownId);
             wrapper.classList.remove('open');
 
@@ -727,8 +748,18 @@
 
             const config = labelMap[dropdownId];
             if (config) {
-                document.getElementById(config.labelEl).textContent = value ? label : config.defaultLabel;
-                window[config.stateKey] = value;
+                if (index === -1) {
+                    // Clear filter
+                    document.getElementById(config.labelEl).textContent = config.defaultLabel;
+                    window[config.stateKey] = '';
+                } else {
+                    const items = dropdownFilteredItems[dropdownId] || [];
+                    const item = items[index];
+                    if (item) {
+                        document.getElementById(config.labelEl).textContent = item.label;
+                        window[config.stateKey] = item.value;
+                    }
+                }
                 currentPage = 1;
                 loadProducts();
             }
