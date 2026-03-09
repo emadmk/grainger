@@ -707,18 +707,47 @@ async def export_excel(
     request: Request,
     db: Session = Depends(get_db),
     source_file: Optional[str] = None,
-    status: Optional[str] = None
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    category: Optional[str] = None,
+    segment: Optional[str] = None,
+    manufacturer: Optional[str] = None,
+    lead_time: Optional[int] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None
 ):
-    """Export products to Excel file."""
+    """Export filtered products to Excel file."""
     require_auth(request)
 
     query = db.query(Product)
 
     if source_file:
         query = query.filter(Product.source_file == source_file)
-
     if status:
         query = query.filter(Product.status == status)
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                Product.material_no.ilike(search_term),
+                Product.short_description.ilike(search_term),
+                Product.long_description.ilike(search_term),
+                Product.mfr_name.ilike(search_term),
+                Product.mfg_number.ilike(search_term)
+            )
+        )
+    if category:
+        query = query.filter(Product.category_name == category)
+    if segment:
+        query = query.filter(Product.segment_name == segment)
+    if manufacturer:
+        query = query.filter(Product.mfr_name == manufacturer)
+    if lead_time is not None:
+        query = query.filter(Product.lead_time == lead_time)
+    if min_price is not None:
+        query = query.filter(Product.price >= min_price)
+    if max_price is not None:
+        query = query.filter(Product.price <= max_price)
 
     # Check count first to avoid loading huge dataset
     count = query.count()

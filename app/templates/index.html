@@ -378,6 +378,13 @@
 
                 <div class="flex-1"></div>
 
+                <button onclick="exportProducts()" id="btnExport" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    Export Excel
+                </button>
+
                 <button onclick="loadProducts()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
@@ -935,6 +942,53 @@
             } catch (e) {
                 console.error('Error loading lead times:', e);
             }
+        }
+
+        // ============================================
+        // EXPORT
+        // ============================================
+        async function exportProducts() {
+            const params = new URLSearchParams();
+            if (currentFile) params.append('source_file', currentFile);
+            if (currentSearch) params.append('search', currentSearch);
+            if (currentCategory) params.append('category', currentCategory);
+            if (currentSegment) params.append('segment', currentSegment);
+            if (currentStatus) params.append('status', currentStatus);
+            if (currentManufacturer) params.append('manufacturer', currentManufacturer);
+            if (currentLeadTime) params.append('lead_time', currentLeadTime);
+            if (currentMinPrice) params.append('min_price', currentMinPrice);
+            if (currentMaxPrice) params.append('max_price', currentMaxPrice);
+
+            const btn = document.getElementById('btnExport');
+            const origText = btn.innerHTML;
+            btn.innerHTML = `<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Exporting...`;
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(`/api/export/excel?${params}`);
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.detail || 'Export failed');
+                }
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const disposition = res.headers.get('Content-Disposition');
+                const filename = disposition ? disposition.split('filename=')[1] : 'export.xlsx';
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                showToast('Export completed successfully', 'success');
+            } catch (e) {
+                console.error('Export error:', e);
+                showToast(e.message || 'Export failed', 'error');
+            }
+
+            btn.innerHTML = origText;
+            btn.disabled = false;
         }
 
         // ============================================
