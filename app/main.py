@@ -466,6 +466,40 @@ async def get_products(
     }
 
 
+def _apply_common_filters(query, source_file=None, status=None, search=None,
+                          category=None, segment=None, manufacturer=None,
+                          lead_time=None, min_price=None, max_price=None):
+    """Apply common filter parameters to a query."""
+    if source_file:
+        query = query.filter(Product.source_file == source_file)
+    if status:
+        query = query.filter(Product.status == status)
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                Product.material_no.ilike(search_term),
+                Product.short_description.ilike(search_term),
+                Product.long_description.ilike(search_term),
+                Product.mfr_name.ilike(search_term),
+                Product.mfg_number.ilike(search_term)
+            )
+        )
+    if category:
+        query = query.filter(Product.category_name == category)
+    if segment:
+        query = query.filter(Product.segment_name == segment)
+    if manufacturer:
+        query = query.filter(Product.mfr_name == manufacturer)
+    if lead_time is not None:
+        query = query.filter(Product.lead_time == lead_time)
+    if min_price is not None:
+        query = query.filter(Product.price >= min_price)
+    if max_price is not None:
+        query = query.filter(Product.price <= max_price)
+    return query
+
+
 @app.get("/api/categories")
 async def get_categories(
     request: Request,
@@ -474,7 +508,10 @@ async def get_categories(
     manufacturer: Optional[str] = None,
     segment: Optional[str] = None,
     lead_time: Optional[int] = None,
-    status: Optional[str] = None
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None
 ):
     """Get list of all categories with product counts, filtered by other active filters."""
     require_auth(request)
@@ -487,16 +524,10 @@ async def get_categories(
         Product.category_name != None
     )
 
-    if source_file:
-        query = query.filter(Product.source_file == source_file)
-    if manufacturer:
-        query = query.filter(Product.mfr_name == manufacturer)
-    if segment:
-        query = query.filter(Product.segment_name == segment)
-    if lead_time is not None:
-        query = query.filter(Product.lead_time == lead_time)
-    if status:
-        query = query.filter(Product.status == status)
+    query = _apply_common_filters(query, source_file=source_file, status=status,
+                                   search=search, segment=segment,
+                                   manufacturer=manufacturer, lead_time=lead_time,
+                                   min_price=min_price, max_price=max_price)
 
     categories = query.group_by(Product.category_name).order_by(Product.category_name).all()
     result = [{"name": c[0], "count": c[1]} for c in categories if c[0]]
@@ -511,7 +542,10 @@ async def get_segments(
     manufacturer: Optional[str] = None,
     category: Optional[str] = None,
     lead_time: Optional[int] = None,
-    status: Optional[str] = None
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None
 ):
     """Get list of all segments with product counts, filtered by other active filters."""
     require_auth(request)
@@ -524,16 +558,10 @@ async def get_segments(
         Product.segment_name != None
     )
 
-    if source_file:
-        query = query.filter(Product.source_file == source_file)
-    if manufacturer:
-        query = query.filter(Product.mfr_name == manufacturer)
-    if category:
-        query = query.filter(Product.category_name == category)
-    if lead_time is not None:
-        query = query.filter(Product.lead_time == lead_time)
-    if status:
-        query = query.filter(Product.status == status)
+    query = _apply_common_filters(query, source_file=source_file, status=status,
+                                   search=search, category=category,
+                                   manufacturer=manufacturer, lead_time=lead_time,
+                                   min_price=min_price, max_price=max_price)
 
     segments = query.group_by(Product.segment_name).order_by(Product.segment_name).all()
     result = [{"name": s[0], "count": s[1]} for s in segments if s[0]]
@@ -548,7 +576,10 @@ async def get_manufacturers(
     category: Optional[str] = None,
     segment: Optional[str] = None,
     lead_time: Optional[int] = None,
-    status: Optional[str] = None
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None
 ):
     """Get list of all manufacturers with product counts, filtered by other active filters."""
     require_auth(request)
@@ -561,16 +592,10 @@ async def get_manufacturers(
         Product.mfr_name != None
     )
 
-    if source_file:
-        query = query.filter(Product.source_file == source_file)
-    if category:
-        query = query.filter(Product.category_name == category)
-    if segment:
-        query = query.filter(Product.segment_name == segment)
-    if lead_time is not None:
-        query = query.filter(Product.lead_time == lead_time)
-    if status:
-        query = query.filter(Product.status == status)
+    query = _apply_common_filters(query, source_file=source_file, status=status,
+                                   search=search, category=category,
+                                   segment=segment, lead_time=lead_time,
+                                   min_price=min_price, max_price=max_price)
 
     manufacturers = query.group_by(Product.mfr_name).order_by(Product.mfr_name).all()
     result = [{"name": m[0], "count": m[1]} for m in manufacturers if m[0]]
@@ -585,7 +610,10 @@ async def get_lead_times(
     manufacturer: Optional[str] = None,
     category: Optional[str] = None,
     segment: Optional[str] = None,
-    status: Optional[str] = None
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None
 ):
     """Get list of all lead times with product counts, filtered by other active filters."""
     require_auth(request)
@@ -597,16 +625,10 @@ async def get_lead_times(
         Product.lead_time != None
     )
 
-    if source_file:
-        query = query.filter(Product.source_file == source_file)
-    if manufacturer:
-        query = query.filter(Product.mfr_name == manufacturer)
-    if category:
-        query = query.filter(Product.category_name == category)
-    if segment:
-        query = query.filter(Product.segment_name == segment)
-    if status:
-        query = query.filter(Product.status == status)
+    query = _apply_common_filters(query, source_file=source_file, status=status,
+                                   search=search, category=category,
+                                   segment=segment, manufacturer=manufacturer,
+                                   min_price=min_price, max_price=max_price)
 
     lead_times = query.group_by(Product.lead_time).order_by(Product.lead_time).all()
     result = [{"value": lt[0], "count": lt[1]} for lt in lead_times if lt[0] is not None]

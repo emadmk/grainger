@@ -522,6 +522,7 @@
                 searchTimeout = setTimeout(() => {
                     currentSearch = e.target.value;
                     currentPage = 1;
+                    reloadAllDropdowns();
                     loadProducts();
                 }, 300);
             });
@@ -549,6 +550,7 @@
                         currentMinPrice = document.getElementById('minPrice').value;
                         currentMaxPrice = document.getElementById('maxPrice').value;
                         currentPage = 1;
+                        reloadAllDropdowns();
                         loadProducts();
                     }, 500);
                 });
@@ -868,6 +870,9 @@
             const params = new URLSearchParams();
             if (currentFile) params.append('source_file', currentFile);
             if (currentStatus) params.append('status', currentStatus);
+            if (currentSearch) params.append('search', currentSearch);
+            if (currentMinPrice) params.append('min_price', currentMinPrice);
+            if (currentMaxPrice) params.append('max_price', currentMaxPrice);
             if (exclude !== 'category' && currentCategory) params.append('category', currentCategory);
             if (exclude !== 'segment' && currentSegment) params.append('segment', currentSegment);
             if (exclude !== 'manufacturer' && currentManufacturer) params.append('manufacturer', currentManufacturer);
@@ -884,6 +889,17 @@
             loadLeadTimes();
         }
 
+        function validateDropdownSelection(dropdownId, stateKey, labelElId, defaultLabel, items) {
+            const currentVal = window[stateKey];
+            if (currentVal && !items.some(i => i.value === currentVal)) {
+                window[stateKey] = '';
+                document.getElementById(labelElId).textContent = defaultLabel;
+            } else if (currentVal) {
+                const match = items.find(i => i.value === currentVal);
+                if (match) document.getElementById(labelElId).textContent = match.label;
+            }
+        }
+
         async function loadCategories() {
             try {
                 const params = buildFilterParams('category');
@@ -894,6 +910,7 @@
                     value: c.name,
                     label: `${c.name} (${c.count.toLocaleString()})`
                 }));
+                validateDropdownSelection('categoryDropdown', 'currentCategory', 'categoryLabel', 'All Categories', dropdownData.categoryDropdown);
             } catch (e) {
                 console.error('Error loading categories:', e);
             }
@@ -909,6 +926,7 @@
                     value: s.name,
                     label: `${s.name} (${s.count.toLocaleString()})`
                 }));
+                validateDropdownSelection('segmentDropdown', 'currentSegment', 'segmentLabel', 'All Segments', dropdownData.segmentDropdown);
             } catch (e) {
                 console.error('Error loading segments:', e);
             }
@@ -924,6 +942,7 @@
                     value: m.name,
                     label: `${m.name} (${m.count.toLocaleString()})`
                 }));
+                validateDropdownSelection('manufacturerDropdown', 'currentManufacturer', 'manufacturerLabel', 'All Manufacturers', dropdownData.manufacturerDropdown);
             } catch (e) {
                 console.error('Error loading manufacturers:', e);
             }
@@ -939,6 +958,7 @@
                     value: String(lt.value),
                     label: `${lt.value} days (${lt.count.toLocaleString()})`
                 }));
+                validateDropdownSelection('leadTimeDropdown', 'currentLeadTime', 'leadTimeLabel', 'All Lead Times', dropdownData.leadTimeDropdown);
             } catch (e) {
                 console.error('Error loading lead times:', e);
             }
