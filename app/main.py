@@ -867,6 +867,253 @@ async def export_excel(
 
 
 # ============================================
+# PURCHASE HISTORY ENRICHMENT
+# ============================================
+
+PURCHASE_HISTORY_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                     "Grainger Purchase History - (Mar-26).xlsx")
+
+
+@app.get("/api/export/purchase-history-enriched")
+async def export_purchase_history_enriched(
+    request: Request,
+    db: Session = Depends(get_db),
+    source_file: Optional[str] = None
+):
+    """
+    Read the Grainger Purchase History Excel, match each Material (exact match)
+    against the products DB, and return an enriched Excel combining both datasets.
+    """
+    require_auth(request)
+
+    # 1. Read Purchase History Excel
+    if not os.path.exists(PURCHASE_HISTORY_FILE):
+        raise HTTPException(status_code=404,
+                            detail="Purchase History Excel file not found on server")
+
+    ph_df = pd.read_excel(PURCHASE_HISTORY_FILE, engine='openpyxl')
+    # Clean column name (has trailing space)
+    ph_df.columns = [c.strip() for c in ph_df.columns]
+
+    if 'Material' not in ph_df.columns:
+        raise HTTPException(status_code=400,
+                            detail="'Material' column not found in Purchase History file")
+
+    # Clean material values
+    ph_df['Material'] = ph_df['Material'].astype(str).str.strip()
+    ph_df = ph_df[ph_df['Material'].notna() & (ph_df['Material'] != '') & (ph_df['Material'] != 'nan')]
+
+    unique_materials = ph_df['Material'].unique().tolist()
+    total_materials = len(unique_materials)
+
+    # 2. Query DB in batches (SQLite has variable limit ~999)
+    BATCH = 500
+    db_rows = []
+    for i in range(0, len(unique_materials), BATCH):
+        batch_materials = unique_materials[i:i + BATCH]
+        query = db.query(Product).filter(Product.material_no.in_(batch_materials))
+        if source_file:
+            query = query.filter(Product.source_file == source_file)
+        db_rows.extend(query.all())
+
+    # 3. Build lookup: material_no -> list of product dicts (may have duplicates from source files)
+    from collections import defaultdict
+    db_by_material = defaultdict(list)
+    for p in db_rows:
+        db_by_material[p.material_no].append(p)
+
+    # 4. For each Excel row, find best matching product using multi-field validation
+    # Excel columns to DB columns mapping for cross-validation:
+    #   Brand Name      -> mfr_name
+    #   Material Segment -> segment_name
+    #   Material Family  -> family_name
+    #   Material Category -> category_name
+    #   Category         -> category_name (alternative)
+    #   Segment          -> segment_name (alternative)
+    def normalize(val):
+        """Normalize string for comparison."""
+        if val is None or pd.isna(val):
+            return ''
+        return str(val).strip().upper()
+
+    def score_match(row, product):
+        """Score how well an Excel row matches a DB product. Higher = better."""
+        score = 0
+        details = []
+        # Brand Name vs mfr_name
+        excel_brand = normalize(row.get('Brand Name', ''))
+        db_brand = normalize(product.mfr_name or '')
+        if excel_brand and db_brand:
+            if excel_brand == db_brand:
+                score += 3
+                details.append('Brand:EXACT')
+            elif excel_brand in db_brand or db_brand in excel_brand:
+                score += 1
+                details.append('Brand:PARTIAL')
+            else:
+                details.append('Brand:MISMATCH')
+        # Material Segment vs segment_name
+        excel_seg = normalize(row.get('Material Segment', ''))
+        db_seg = normalize(product.segment_name or '')
+        if excel_seg and db_seg:
+            if excel_seg == db_seg:
+                score += 2
+                details.append('Segment:EXACT')
+            elif excel_seg in db_seg or db_seg in excel_seg:
+                score += 1
+                details.append('Segment:PARTIAL')
+            else:
+                details.append('Segment:MISMATCH')
+        # Material Family vs family_name
+        excel_fam = normalize(row.get('Material Family', ''))
+        db_fam = normalize(product.family_name or '')
+        if excel_fam and db_fam:
+            if excel_fam == db_fam:
+                score += 2
+                details.append('Family:EXACT')
+            elif excel_fam in db_fam or db_fam in excel_fam:
+                score += 1
+                details.append('Family:PARTIAL')
+            else:
+                details.append('Family:MISMATCH')
+        # Material Category vs category_name
+        excel_cat = normalize(row.get('Material Category', ''))
+        db_cat = normalize(product.category_name or '')
+        if excel_cat and db_cat:
+            if excel_cat == db_cat:
+                score += 2
+                details.append('Category:EXACT')
+            elif excel_cat in db_cat or db_cat in excel_cat:
+                score += 1
+                details.append('Category:PARTIAL')
+            else:
+                details.append('Category:MISMATCH')
+        return score, details
+
+    result_rows = []
+    for _, row in ph_df.iterrows():
+        material = row['Material']
+        candidates = db_by_material.get(material, [])
+
+        if not candidates:
+            row_dict = row.to_dict()
+            row_dict['DB_Match'] = 'NO'
+            row_dict['Match_Confidence'] = ''
+            row_dict['Match_Details'] = 'No product found in DB'
+            result_rows.append(row_dict)
+            continue
+
+        # Score each candidate and pick the best
+        best_product = None
+        best_score = -1
+        best_details = []
+        for p in candidates:
+            s, d = score_match(row, p)
+            if s > best_score:
+                best_score = s
+                best_product = p
+                best_details = d
+
+        # Determine confidence level
+        has_mismatch = any('MISMATCH' in d for d in best_details)
+        if best_score >= 7:
+            confidence = 'HIGH'
+        elif best_score >= 3 and not has_mismatch:
+            confidence = 'MEDIUM'
+        elif has_mismatch:
+            confidence = 'LOW - CHECK'
+        else:
+            confidence = 'MATERIAL_ONLY'
+
+        p = best_product
+        row_dict = row.to_dict()
+        row_dict.update({
+            "DB_Price": p.price,
+            "DB_Catalog_Price": p.catalog_price,
+            "DB_Short_Description": p.short_description,
+            "DB_Long_Description": p.long_description,
+            "DB_Unit_of_Issue": p.unit_of_issue,
+            "DB_Items_Per_UOI": p.items_per_uoi,
+            "DB_Min_Order_Qty": p.min_order_qty,
+            "DB_Manufacturer": p.mfr_name,
+            "DB_Mfg_Number": p.mfg_number,
+            "DB_Mfg_Number_Non_Condensed": p.mfg_number_non_condensed,
+            "DB_Lead_Time": p.lead_time,
+            "DB_Category": p.category_name,
+            "DB_Family": p.family_name,
+            "DB_Segment": p.segment_name,
+            "DB_Ship_Pack_Weight": p.ship_pack_weight,
+            "DB_Ship_Pack_Desc": p.ship_pack_desc,
+            "DB_Image_URL": p.image_url,
+            "DB_Product_URL": p.product_url,
+            "DB_Hazmat_Flag": p.hazmat_flag,
+            "DB_TAA_Compliant": p.taa_compliant,
+            "DB_Country_of_Origin": p.country_of_origin,
+            "DB_Country_Name": p.country_of_origin_name,
+            "DB_Harmonization_Code": p.harmonization_code,
+            "DB_UPC_Numbers": p.upc_numbers,
+            "DB_Green_Material_Flag": p.green_material_flag,
+            "DB_UNSPSC_Class_Name": p.unspsc_class_name,
+            "DB_UNSPSC_Commodity_Name": p.unspsc_commodity_name,
+            "DB_Status": p.status,
+            "DB_Source_File": p.source_file,
+            "DB_Match": "YES",
+            "Match_Confidence": confidence,
+            "Match_Details": '; '.join(best_details) if best_details else 'Material match only'
+        })
+        result_rows.append(row_dict)
+
+    result_df = pd.DataFrame(result_rows)
+
+    matched = (result_df['DB_Match'] == 'YES').sum()
+    not_matched = (result_df['DB_Match'] == 'NO').sum()
+    high_conf = (result_df['Match_Confidence'] == 'HIGH').sum()
+    low_conf = (result_df['Match_Confidence'] == 'LOW - CHECK').sum()
+
+    # 5. Create Excel with two sheets
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        result_df.to_excel(writer, sheet_name='Enriched Data', index=False)
+
+        # Summary sheet
+        summary_data = {
+            "Metric": [
+                "Total Rows in Purchase History",
+                "Unique Materials",
+                "Matched in DB",
+                "NOT Matched in DB",
+                "Match Rate",
+                "HIGH Confidence Matches",
+                "LOW Confidence (Need Review)",
+                "Source File Filter",
+                "Generated At"
+            ],
+            "Value": [
+                len(ph_df),
+                total_materials,
+                matched,
+                not_matched,
+                f"{matched / len(ph_df) * 100:.1f}%" if len(ph_df) > 0 else "0%",
+                high_conf,
+                low_conf,
+                source_file or "All",
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            ]
+        }
+        pd.DataFrame(summary_data).to_excel(writer, sheet_name='Summary', index=False)
+
+    output.seek(0)
+
+    filename = f"Purchase_History_Enriched_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+# ============================================
 # RUN SERVER
 # ============================================
 
