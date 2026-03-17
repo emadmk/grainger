@@ -21,7 +21,9 @@ from collections import defaultdict
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 EXCEL_FILE = os.path.join(SCRIPT_DIR, "Grainger Purchase History - (Mar-26).xlsx")
 DB_FILE = os.path.join(SCRIPT_DIR, "app", "grainger.db")
-OUTPUT_FILE = os.path.join(SCRIPT_DIR, f"Purchase_History_Enriched_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
+TIMESTAMP = datetime.now().strftime('%Y%m%d_%H%M%S')
+OUTPUT_CSV = os.path.join(SCRIPT_DIR, f"Purchase_History_Enriched_{TIMESTAMP}.csv")
+OUTPUT_XLSX = os.path.join(SCRIPT_DIR, f"Purchase_History_Enriched_{TIMESTAMP}.xlsx")
 
 
 def normalize(val):
@@ -235,47 +237,68 @@ def main():
             print(f"  Processed {idx + 1:,} / {len(ph_df):,} rows...")
 
     result_df = pd.DataFrame(result_rows)
+    # Free memory
+    del result_rows
 
-    # 5. Write Excel
-    print(f"\nWriting Excel file...")
-    with pd.ExcelWriter(OUTPUT_FILE, engine='openpyxl') as writer:
-        result_df.to_excel(writer, sheet_name='Enriched Data', index=False)
+    # 5. Write CSV first (memory efficient)
+    print(f"\nWriting CSV file...")
+    result_df.to_csv(OUTPUT_CSV, index=False, encoding='utf-8-sig')
+    csv_size = os.path.getsize(OUTPUT_CSV) / (1024 * 1024)
+    print(f"  CSV saved: {csv_size:.1f} MB")
+
+    # 6. Convert CSV to Excel in chunks (memory efficient)
+    print(f"\nConverting to Excel (chunked writer)...")
+    try:
+        from openpyxl import Workbook
+        wb = Workbook(write_only=True)
+        ws = wb.create_sheet('Enriched Data')
+
+        # Write header
+        columns = list(result_df.columns)
+        ws.append(columns)
+
+        # Write data in chunks to avoid memory issues
+        CHUNK = 10000
+        total_rows = len(result_df)
+        for start in range(0, total_rows, CHUNK):
+            end = min(start + CHUNK, total_rows)
+            chunk = result_df.iloc[start:end]
+            for _, row in chunk.iterrows():
+                ws.append([row[c] for c in columns])
+            if (start // CHUNK + 1) % 5 == 0:
+                print(f"  Written {end:,} / {total_rows:,} rows...")
 
         # Summary sheet
-        summary_data = {
-            "Metric": [
-                "Total Rows in Purchase History",
-                "Unique Materials",
-                "Matched in DB",
-                "NOT Matched in DB",
-                "Match Rate",
-                "HIGH Confidence",
-                "MEDIUM Confidence",
-                "LOW - CHECK (Need Review)",
-                "MATERIAL_ONLY",
-                "Generated At",
-            ],
-            "Value": [
-                len(ph_df),
-                len(unique_materials),
-                matched_count,
-                not_matched_count,
-                f"{matched_count / len(ph_df) * 100:.1f}%" if len(ph_df) > 0 else "0%",
-                confidence_counts.get('HIGH', 0),
-                confidence_counts.get('MEDIUM', 0),
-                confidence_counts.get('LOW - CHECK', 0),
-                confidence_counts.get('MATERIAL_ONLY', 0),
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            ]
-        }
-        pd.DataFrame(summary_data).to_excel(writer, sheet_name='Summary', index=False)
+        ws2 = wb.create_sheet('Summary')
+        ws2.append(['Metric', 'Value'])
+        summary_rows = [
+            ('Total Rows in Purchase History', len(ph_df)),
+            ('Unique Materials', len(unique_materials)),
+            ('Matched in DB', matched_count),
+            ('NOT Matched in DB', not_matched_count),
+            ('Match Rate', f"{matched_count / len(ph_df) * 100:.1f}%" if len(ph_df) > 0 else "0%"),
+            ('HIGH Confidence', confidence_counts.get('HIGH', 0)),
+            ('MEDIUM Confidence', confidence_counts.get('MEDIUM', 0)),
+            ('LOW - CHECK (Need Review)', confidence_counts.get('LOW - CHECK', 0)),
+            ('MATERIAL_ONLY', confidence_counts.get('MATERIAL_ONLY', 0)),
+            ('Generated At', datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+        ]
+        for row in summary_rows:
+            ws2.append(list(row))
 
-    file_size = os.path.getsize(OUTPUT_FILE) / (1024 * 1024)
+        wb.save(OUTPUT_XLSX)
+        xlsx_size = os.path.getsize(OUTPUT_XLSX) / (1024 * 1024)
+        print(f"  Excel saved: {xlsx_size:.1f} MB")
+        excel_ok = True
+    except Exception as e:
+        print(f"  Excel write failed ({e}), CSV is still available")
+        excel_ok = False
 
     print(f"\n{'=' * 60}")
     print(f"  DONE!")
-    print(f"  Output: {OUTPUT_FILE}")
-    print(f"  Size: {file_size:.1f} MB")
+    print(f"  CSV:   {OUTPUT_CSV} ({csv_size:.1f} MB)")
+    if excel_ok:
+        print(f"  Excel: {OUTPUT_XLSX} ({xlsx_size:.1f} MB)")
     print(f"  Matched: {matched_count:,} / {len(ph_df):,} ({matched_count / len(ph_df) * 100:.1f}%)")
     print(f"  Not matched: {not_matched_count:,}")
     print(f"  HIGH confidence: {confidence_counts.get('HIGH', 0):,}")
